@@ -35,19 +35,19 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      */
     private _signer;
     /**
-     * Raw Ed25519 private key bytes (32 bytes).
-     *
-     * @private
-     * @type {Uint8Array | undefined}
-     */
-    private _rawPrivateKey;
-    /**
      * Raw Ed25519 public key bytes (32 bytes).
      *
      * @private
      * @type {Uint8Array}
      */
     private _rawPublicKey;
+    /**
+     * Raw Ed25519 private key bytes (32 bytes).
+     *
+     * @private
+     * @type {Uint8Array | undefined}
+     */
+    private _rawPrivateKey;
     /**
      * The derivation path's index of this account.
      *
@@ -182,4 +182,4 @@ export type KeyPairSigner = import("@solana/signers").KeyPairSigner;
 export type SolanaTransaction = import("./wallet-account-read-only-solana.js").SolanaTransaction;
 export type SolanaWalletConfig = import("./wallet-account-read-only-solana.js").SolanaWalletConfig;
 export type FullySignedTransaction = import("@solana/transactions").FullySignedTransaction;
-import WalletAccountReadOnlySolana from './wallet-account-read-only-solana.js';
+import WalletAccountReadOnlySolana from "./wallet-account-read-only-solana.js";
