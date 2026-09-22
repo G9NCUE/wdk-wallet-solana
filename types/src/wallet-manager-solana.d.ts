@@ -7,19 +7,19 @@ export default class WalletManagerSolana extends WalletManager {
      */
     constructor(seed: string | Uint8Array, config?: SolanaWalletConfig);
     /**
-     * A Solana RPC client for HTTP requests.
-     *
-     * @protected
-     * @type {SolanaRpc | undefined}
-     */
-    protected _rpc: SolanaRpc | undefined;
-    /**
      * The commitment level for transactions.
      *
      * @protected
      * @type {Commitment}
      */
     protected _commitment: Commitment;
+    /**
+     * A Solana RPC client for HTTP requests.
+     *
+     * @protected
+     * @type {SolanaRpc | undefined}
+     */
+    protected _rpc: SolanaRpc | undefined;
     /**
      * Returns the wallet account at a specific index (see [SLIP-0010](https://slips.readthedocs.io/en/latest/slip-0010/)).
      *
@@ -40,17 +40,10 @@ export default class WalletManagerSolana extends WalletManager {
      * @returns {Promise<WalletAccountSolana>} The account.
      */
     getAccountByPath(path: string): Promise<WalletAccountSolana>;
-    /**
-     * Returns the current fee rates.
-     *
-     * @returns {Promise<FeeRates>} The fee rates (in lamports).
-     * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
-     */
-    getFeeRates(): Promise<FeeRates>;
 }
 export type SolanaRpc = ReturnType<typeof import("@solana/rpc").createSolanaRpc>;
 export type Commitment = import("@solana/rpc-types").Commitment;
 export type FeeRates = import("@tetherto/wdk-wallet").FeeRates;
 export type SolanaWalletConfig = import("./wallet-account-solana.js").SolanaWalletConfig;
-import WalletManager from "@tetherto/wdk-wallet";
-import WalletAccountSolana from "./wallet-account-solana.js";
+import WalletManager from '@tetherto/wdk-wallet';
+import WalletAccountSolana from './wallet-account-solana.js';

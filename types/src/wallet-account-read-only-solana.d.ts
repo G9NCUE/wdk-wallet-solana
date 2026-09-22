@@ -17,13 +17,6 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      */
     protected _config: Omit<SolanaWalletConfig, "transferMaxFee" | "transactionMaxFee">;
     /**
-     * A Solana RPC client for HTTP requests.
-     *
-     * @protected
-     * @type {SolanaRpc | undefined}
-     */
-    protected _rpc: SolanaRpc | undefined;
-    /**
      * The commitment level for querying transaction and account states.
      * Determines the level of finality required before returning results.
      *
@@ -32,20 +25,12 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      */
     protected _commitment: Commitment;
     /**
-     * Returns the account's native SOL balance.
+     * A Solana RPC client for HTTP requests.
      *
-     * @returns {Promise<bigint>} The sol balance (in lamports).
-     * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
+     * @protected
+     * @type {SolanaRpc | undefined}
      */
-    getBalance(): Promise<bigint>;
-    /**
-     * Returns the account balance for a specific SPL token.
-     *
-     * @param {string} tokenAddress - The smart contract address of the token.
-     * @returns {Promise<bigint>} The token balance (in base unit).
-     * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
-     */
-    getTokenBalance(tokenAddress: string): Promise<bigint>;
+    protected _rpc: SolanaRpc | undefined;
     /**
      * Returns the account balances for a list of SPL tokens.
      *
@@ -67,10 +52,11 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * Quotes the costs of a transfer operation.
      *
      * @param {TransferOptions} options - The transfer's options.
+     * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
      * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
      */
-    quoteTransfer(options: TransferOptions): Promise<Omit<TransferResult, "hash">>;
+    quoteTransfer(options: TransferOptions, solanaOptions?: SolanaTransferOptions): Promise<Omit<TransferResult, "hash">>;
     /**
      * Retrieves a transaction receipt by its signature
      *
@@ -113,12 +99,12 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * @param {string} token - The SPL token mint address (base58-encoded public key).
      * @param {string} recipient - The recipient's wallet address (base58-encoded public key).
      * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
+     * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<TransactionMessage>} The constructed transaction message.
      * @throws {ValueError} If the amount exceeds the representable range.
      * @todo Support Token-2022 (Token Extensions Program).
-     * @todo Support transfer with memo for tokens that require it.
      */
-    protected _buildSPLTransferTransactionMessage(token: string, recipient: string, amount: number | bigint): Promise<TransactionMessage>;
+    protected _buildSPLTransferTransactionMessage(token: string, recipient: string, amount: number | bigint, solanaOptions?: SolanaTransferOptions): Promise<TransactionMessage>;
     /**
      * Builds a transaction message for native SOL transfer.
      * Creates a transfer instruction for sending SOL.
@@ -154,14 +140,6 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * @returns {Transaction} The decoded transaction.
      */
     protected _decodeSerializedTransaction(serializedTransaction: string): Transaction;
-    /**
-     * Verifies a message's signature.
-     *
-     * @param {string} message - The original message.
-     * @param {string} signature - The signature to verify.
-     * @returns {Promise<boolean>} True if the signature is valid.
-     */
-    verify(message: string, signature: string): Promise<boolean>;
     /**
      * Ensures the transaction has either a blockhash lifetime or a durable nonce lifetime.
      *
@@ -203,6 +181,15 @@ export type SolanaTransactionDetails = {
      * - The native Solana transaction object, or null while the transaction is pending.
      */
     transaction: SolanaTransactionReceipt | null;
+};
+/**
+ * The Solana-specific options of a transfer operation, next to the chain-agnostic {@link TransferOptions}.
+ */
+export type SolanaTransferOptions = {
+    /**
+     * - A UTF-8 memo to attach to the transfer. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
+     */
+    memo?: string;
 };
 export type SimpleSolanaTransaction = {
     /**
@@ -246,4 +233,4 @@ export type SolanaWalletConfig = {
      */
     transactionMaxFee?: number | bigint;
 };
-import { WalletAccountReadOnly } from "@tetherto/wdk-wallet";
+import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';

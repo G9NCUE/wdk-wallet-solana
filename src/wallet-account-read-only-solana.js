@@ -35,6 +35,7 @@ import {
 import { getTransactionDecoder } from '@solana/transactions'
 import { getBase64Decoder, getBase64Encoder } from '@solana/codecs'
 import { getTransferSolInstruction } from '@solana-program/system'
+import { getAddMemoInstruction } from '@solana-program/memo'
 import {
   findAssociatedTokenPda,
   getCreateAssociatedTokenIdempotentInstruction,
@@ -62,6 +63,13 @@ import { isSignature, verifySignature } from '@solana/keys'
  * @typedef {Object} SolanaTransactionDetails
  * @property {number | null} confirmations - The number of confirmations, or null once the transaction is finalized (or when the node no longer reports a count).
  * @property {SolanaTransactionReceipt | null} transaction - The native Solana transaction object, or null while the transaction is pending.
+ */
+
+/**
+ * The Solana-specific options of a transfer operation, next to the chain-agnostic {@link TransferOptions}.
+ *
+ * @typedef {Object} SolanaTransferOptions
+ * @property {string} [memo] - A UTF-8 memo to attach to the transfer. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
  */
 
 /**
@@ -317,16 +325,17 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
    * Quotes the costs of a transfer operation.
    *
    * @param {TransferOptions} options - The transfer's options.
+   * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
    * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
    */
-  async quoteTransfer (options) {
+  async quoteTransfer (options, solanaOptions = {}) {
     if (!this._rpc) {
       throw new ProviderRequiredError('The wallet must be connected to a provider to quote transfer operations.')
     }
 
     const { token, recipient, amount } = options
-    const transactionMessage = await this._buildSPLTransferTransactionMessage(token, recipient, amount)
+    const transactionMessage = await this._buildSPLTransferTransactionMessage(token, recipient, amount, solanaOptions)
 
     const fee = await this._getTransactionFee(transactionMessage)
 
@@ -437,12 +446,12 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
    * @param {string} token - The SPL token mint address (base58-encoded public key).
    * @param {string} recipient - The recipient's wallet address (base58-encoded public key).
    * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
+   * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
    * @returns {Promise<TransactionMessage>} The constructed transaction message.
    * @throws {ValueError} If the amount exceeds the representable range.
    * @todo Support Token-2022 (Token Extensions Program).
-   * @todo Support transfer with memo for tokens that require it.
    */
-  async _buildSPLTransferTransactionMessage (token, recipient, amount) {
+  async _buildSPLTransferTransactionMessage (token, recipient, amount, solanaOptions = {}) {
     if (typeof amount === 'bigint' && amount > MAX_U64) {
       throw new ValueError('Amount exceeds u64 maximum value')
     }
@@ -468,6 +477,8 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
       tokenProgram: TOKEN_PROGRAM_ADDRESS
     })
 
+    const { memo } = solanaOptions
+
     const instructions = []
 
     const recipientATAInfo = await this._rpc
@@ -486,6 +497,12 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
         payer: ownerPublicKey
       })
       instructions.push(createATAInstruction)
+    }
+
+    // The memo has to be logged before the transfer it refers to, since the memo
+    // transfer extension only looks at the instructions preceding the transfer.
+    if (memo !== undefined) {
+      instructions.push(getAddMemoInstruction({ memo }))
     }
 
     // Add transfer instruction

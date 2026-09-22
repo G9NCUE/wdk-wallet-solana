@@ -55,6 +55,8 @@ curve.hashes.sha512 = sha512
 /** @typedef {import('@tetherto/wdk-wallet').TransferOptions} TransferOptions */
 /** @typedef {import('@tetherto/wdk-wallet').TransferResult} TransferResult */
 
+/** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransferOptions} SolanaTransferOptions */
+
 /** @typedef {import('@solana/errors').SolanaError} SolanaError */
 /** @typedef {import('@solana/signers').KeyPairSigner} KeyPairSigner */
 
@@ -434,13 +436,14 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    * Transfers a token to another address.
    *
    * @param {TransferOptions} options - The transfer's options.
+   * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {AssertionError} If the wallet account has been disposed.
    * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
    * @throws {MaximumFeeExceededError} If the transfer's cost exceeds the maximum transfer fee option.
    * @note only SPL tokens - won't work for native SOL
    */
-  async transfer (options) {
+  async transfer (options, solanaOptions = {}) {
     if (!this._rawPrivateKey) {
       throw new AssertionError('The wallet account has been disposed.')
     }
@@ -451,7 +454,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
 
     const { token, recipient, amount } = options
 
-    const transactionMessage = await this._buildSPLTransferTransactionMessage(token, recipient, amount)
+    const transactionMessage = await this._buildSPLTransferTransactionMessage(token, recipient, amount, solanaOptions)
     const fee = await this._getTransactionFee(transactionMessage)
     if (this._config.transferMaxFee !== undefined && fee > this._config.transferMaxFee) {
       throw new MaximumFeeExceededError('Exceeded maximum fee cost for transfer operation.')
