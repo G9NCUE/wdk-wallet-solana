@@ -32,7 +32,7 @@ import {
   isTransactionMessageWithBlockhashLifetime,
   isTransactionMessageWithDurableNonceLifetime
 } from '@solana/transaction-messages'
-import { getTransactionDecoder } from '@solana/transactions'
+import { getTransactionDecoder, getTransactionMessageSize, TRANSACTION_SIZE_LIMIT } from '@solana/transactions'
 import { getBase64Decoder, getBase64Encoder } from '@solana/codecs'
 import { getTransferSolInstruction } from '@solana-program/system'
 import { getAddMemoInstruction } from '@solana-program/memo'
@@ -69,7 +69,7 @@ import { isSignature, verifySignature } from '@solana/keys'
  * The Solana-specific options of a transfer operation, next to the chain-agnostic {@link TransferOptions}.
  *
  * @typedef {Object} SolanaTransferOptions
- * @property {string} [memo] - A UTF-8 memo to attach to the transfer, ignored when empty. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
+ * @property {string} [memo] - A UTF-8 memo to attach to the transfer, ignored when empty. It has to be short enough for the transfer to stay within the maximum transaction size. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
  */
 
 /**
@@ -448,7 +448,7 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
    * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
    * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
    * @returns {Promise<TransactionMessage>} The constructed transaction message.
-   * @throws {ValueError} If the amount exceeds the representable range.
+   * @throws {ValueError} If the amount exceeds the representable range, or if the memo makes the transaction exceed the maximum transaction size.
    * @todo Support Token-2022 (Token Extensions Program).
    */
   async _buildSPLTransferTransactionMessage (token, recipient, amount, solanaOptions = {}) {
@@ -526,6 +526,14 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
       (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
       (tx) => appendTransactionMessageInstructions(instructions, tx)
     )
+
+    // The memo is the only caller-sized part of the message, so an oversized one is caught here
+    // rather than by the provider, which would reject the transaction with an opaque error.
+    const size = getTransactionMessageSize(transactionMessage)
+
+    if (size > TRANSACTION_SIZE_LIMIT) {
+      throw new ValueError(`The transfer transaction is ${size} bytes, over the ${TRANSACTION_SIZE_LIMIT} bytes limit. Shorten the memo.`)
+    }
 
     return transactionMessage
   }

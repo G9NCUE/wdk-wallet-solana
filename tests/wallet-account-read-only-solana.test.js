@@ -979,6 +979,31 @@ describe('WalletAccountReadOnlySolana', () => {
       expect(result).toEqual({ fee: 5000n })
     })
 
+    it('should throw when the memo makes the transaction too large', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      await expect(
+        readOnlyAccount.quoteTransfer(
+          {
+            token: MOCK_TOKEN_MINT,
+            recipient: MOCK_RECIPIENT,
+            amount: 1000000n
+          },
+          { memo: 'x'.repeat(1000) }
+        )
+      ).rejects.toThrow('The transfer transaction is 1251 bytes, over the 1232 bytes limit. Shorten the memo.')
+
+      expect(mockRpc.getFeeForMessage).not.toHaveBeenCalled()
+    })
+
     it('should not attach a memo when the memo is empty', async () => {
       mockRpc.getAccountInfo.mockReturnValue({
         send: jest.fn().mockResolvedValue({
