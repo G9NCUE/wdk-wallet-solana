@@ -80,7 +80,7 @@ import { isSignature, verifySignature } from '@solana/keys'
 
 /**
  * @typedef {Object} SolanaWalletConfig
- * @property {string | string[]} [provider] - The Solana RPC url. It's also possible to provide an array of urls instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+ * @property {string | SolanaRpc | Array<string | SolanaRpc>} [provider] - The Solana RPC url or an already-built Solana RPC client. It's also possible to provide an array of these instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list. An already-built client is reused as-is, which lets a manager share a single client across all the accounts it creates.
  * @property {string | string[]} [rpcUrl] - Deprecated alias for `provider`. If both are set, `provider` takes precedence.
  * @property {Commitment} [commitment] - The commitment level (default: 'confirmed').
  * @property {number} [retries] - If set and if 'provider' is a list of urls, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order (default: 3).
@@ -111,8 +111,7 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      */
     this._config = config
 
-    const { provider: providerOption, rpcUrl, commitment = 'confirmed', retries = 3 } = config
-    const rpcTarget = providerOption ?? rpcUrl
+    const { commitment = 'confirmed' } = config
 
     /**
      * The commitment level for querying transaction and account states.
@@ -129,20 +128,42 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * @protected
      * @type {SolanaRpc | undefined}
      */
-    this._rpc = undefined
+    this._rpc = WalletAccountReadOnlySolana._buildRpc(config)
+  }
+
+  /**
+   * Builds a Solana RPC client from the wallet configuration: a url string, an already-built
+   * client reused as-is, or a list of either (with connection errors failing over to the next).
+   *
+   * @protected
+   * @param {Omit<SolanaWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+   * @returns {SolanaRpc | undefined} The rpc client, or undefined if none is configured.
+   */
+  static _buildRpc (config = {}) {
+    const { provider, rpcUrl, retries = 3 } = config
+    const rpcTarget = provider ?? rpcUrl
+
+    const toOption = (entry) => (typeof entry === 'string' ? createSolanaRpc(entry) : entry)
 
     if (Array.isArray(rpcTarget)) {
-      if (rpcTarget.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
-        for (const entry of rpcTarget) {
-          const option = createSolanaRpc(entry)
-          failoverProvider.addProvider(option)
-        }
-        this._rpc = failoverProvider.initialize()
+      if (rpcTarget.length === 0) {
+        return undefined
       }
-    } else if (rpcTarget) {
-      this._rpc = createSolanaRpc(rpcTarget)
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of rpcTarget) {
+        failoverProvider.addProvider(toOption(entry))
+      }
+
+      return failoverProvider.initialize()
     }
+
+    if (rpcTarget) {
+      return toOption(rpcTarget)
+    }
+
+    return undefined
   }
 
   /**

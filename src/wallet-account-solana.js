@@ -471,7 +471,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
   async toReadOnlyAccount () {
     if (!this._solanaReadOnlyAccount) {
       const address = await this.getAddress()
-      this._solanaReadOnlyAccount = new WalletAccountReadOnlySolana(address, this._config)
+      this._solanaReadOnlyAccount = new WalletAccountReadOnlySolana(address, { ...this._config, provider: this._rpc })
     }
 
     return this._solanaReadOnlyAccount

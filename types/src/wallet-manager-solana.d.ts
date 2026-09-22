@@ -41,6 +41,14 @@ export default class WalletManagerSolana extends WalletManager {
      */
     getAccountByPath(path: string): Promise<WalletAccountSolana>;
     /**
+     * Builds the account config, injecting the manager's shared rpc client so accounts reuse
+     * it instead of opening their own.
+     *
+     * @private
+     * @returns {SolanaWalletConfig} The account configuration.
+     */
+    private _accountConfig;
+    /**
      * Returns the current fee rates.
      *
      * @returns {Promise<FeeRates>} The fee rates (in lamports).

@@ -16,10 +16,6 @@
 
 import WalletManager, { ProviderRequiredError } from '@tetherto/wdk-wallet'
 
-import FailoverProvider from '@tetherto/wdk-failover-provider'
-
-import { createSolanaRpc } from '@solana/rpc'
-
 import WalletAccountSolana from './wallet-account-solana.js'
 
 /** @typedef {ReturnType<typeof import('@solana/rpc').createSolanaRpc>} SolanaRpc */
@@ -53,8 +49,7 @@ export default class WalletManagerSolana extends WalletManager {
      */
     this._config = config
 
-    const { provider: providerOption, rpcUrl, commitment = 'confirmed', retries = 3 } = config
-    const rpcTarget = providerOption ?? rpcUrl
+    const { commitment = 'confirmed' } = config
 
     /**
      * The commitment level for transactions.
@@ -65,25 +60,13 @@ export default class WalletManagerSolana extends WalletManager {
     this._commitment = commitment
 
     /**
-     * A Solana RPC client for HTTP requests.
+     * A Solana RPC client for HTTP requests. Shared with every account this manager creates,
+     * so two accounts never open two clients for the same endpoint.
      *
      * @protected
      * @type {SolanaRpc | undefined}
      */
-    this._rpc = undefined
-
-    if (Array.isArray(rpcTarget)) {
-      if (rpcTarget.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
-        for (const entry of rpcTarget) {
-          const option = createSolanaRpc(entry)
-          failoverProvider.addProvider(option)
-        }
-        this._rpc = failoverProvider.initialize()
-      }
-    } else if (rpcTarget) {
-      this._rpc = createSolanaRpc(rpcTarget)
-    }
+    this._rpc = WalletAccountSolana._buildRpc(config)
   }
 
   /**
@@ -110,12 +93,23 @@ export default class WalletManagerSolana extends WalletManager {
    */
   async getAccountByPath (path) {
     if (!this._accounts[path]) {
-      const account = new WalletAccountSolana(this.seed, path, this._config)
+      const account = new WalletAccountSolana(this.seed, path, this._accountConfig())
 
       this._accounts[path] = account
     }
 
     return this._accounts[path]
+  }
+
+  /**
+   * Builds the account config, injecting the manager's shared rpc client so accounts reuse
+   * it instead of opening their own.
+   *
+   * @private
+   * @returns {SolanaWalletConfig} The account configuration.
+   */
+  _accountConfig () {
+    return { ...this._config, provider: this._rpc }
   }
 
   /**

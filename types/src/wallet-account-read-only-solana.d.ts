@@ -3,6 +3,15 @@
  */
 export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
     /**
+     * Builds a Solana RPC client from the wallet configuration: a url string, an already-built
+     * client reused as-is, or a list of either (with connection errors failing over to the next).
+     *
+     * @protected
+     * @param {Omit<SolanaWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+     * @returns {SolanaRpc | undefined} The rpc client, or undefined if none is configured.
+     */
+    protected static _buildRpc(config?: Omit<SolanaWalletConfig, "transferMaxFee" | "transactionMaxFee">): SolanaRpc | undefined;
+    /**
      * Creates a new solana read-only wallet account.
      *
      * @param {string} addr - The account's address.
@@ -222,9 +231,9 @@ export type SimpleSolanaTransaction = {
 export type SolanaTransaction = SimpleSolanaTransaction | TransactionMessage | string;
 export type SolanaWalletConfig = {
     /**
-     * - The Solana RPC url. It's also possible to provide an array of urls instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+     * - The Solana RPC url or an already-built Solana RPC client. It's also possible to provide an array of these instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list. An already-built client is reused as-is, which lets a manager share a single client across all the accounts it creates.
      */
-    provider?: string | string[];
+    provider?: string | SolanaRpc | Array<string | SolanaRpc>;
     /**
      * - Deprecated alias for `provider`. If both are set, `provider` takes precedence.
      */
