@@ -1222,6 +1222,7 @@ describe('WalletAccountSolana', () => {
         expect(programs).toEqual([MEMO_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS])
         expect(compiledMessage.instructions[0].data).toEqual(EXPECTED_MEMO_DATA)
         expect(result.hash).toBe('memo-transfer-sig')
+        expect(result.fee).toBe(5000n)
       })
     })
   })
