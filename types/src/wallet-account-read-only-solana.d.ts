@@ -187,7 +187,6 @@ export type TransferResult = import("@tetherto/wdk-wallet").TransferResult;
 export type TransactionReceipt = import("@tetherto/wdk-wallet").TransactionReceipt;
 export type WaitForTransactionOptions = import("@tetherto/wdk-wallet").WaitForTransactionOptions;
 export type TransactionMessage = import("@solana/transaction-messages").TransactionMessage;
-export type FullySignedTransaction = import("@solana/transactions").FullySignedTransaction;
 export type Transaction = import("@solana/transactions").Transaction;
 export type SolanaRpc = ReturnType<typeof import("@solana/rpc").createSolanaRpc>;
 export type SolanaTransactionReceipt = ReturnType<import("@solana/rpc-api").SolanaRpcApi["getTransaction"]>;

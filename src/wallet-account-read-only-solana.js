@@ -51,7 +51,6 @@ import { isSignature, verifySignature } from '@solana/keys'
 /** @typedef {import('@tetherto/wdk-wallet').WaitForTransactionOptions} WaitForTransactionOptions */
 
 /** @typedef {import('@solana/transaction-messages').TransactionMessage} TransactionMessage */
-/** @typedef {import('@solana/transactions').FullySignedTransaction} FullySignedTransaction */
 /** @typedef {import('@solana/transactions').Transaction} Transaction */
 /** @typedef {ReturnType<typeof import('@solana/rpc').createSolanaRpc>} SolanaRpc */
 /** @typedef {ReturnType<import('@solana/rpc-api').SolanaRpcApi['getTransaction']>} SolanaTransactionReceipt */
