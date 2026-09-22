@@ -210,7 +210,7 @@ export type SolanaTransactionDetails = {
  */
 export type SolanaTransferOptions = {
     /**
-     * - A UTF-8 memo to attach to the transfer. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
+     * - A UTF-8 memo to attach to the transfer, ignored when empty. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
      */
     memo?: string;
 };

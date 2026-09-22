@@ -69,7 +69,7 @@ import { isSignature, verifySignature } from '@solana/keys'
  * The Solana-specific options of a transfer operation, next to the chain-agnostic {@link TransferOptions}.
  *
  * @typedef {Object} SolanaTransferOptions
- * @property {string} [memo] - A UTF-8 memo to attach to the transfer. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
+ * @property {string} [memo] - A UTF-8 memo to attach to the transfer, ignored when empty. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none.
  */
 
 /**
@@ -501,7 +501,7 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
 
     // The memo has to be logged before the transfer it refers to, since the memo
     // transfer extension only looks at the instructions preceding the transfer.
-    if (memo !== undefined) {
+    if (memo) {
       instructions.push(getAddMemoInstruction({ memo }))
     }
 
