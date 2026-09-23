@@ -447,15 +447,22 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
    * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
    * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
    * @returns {Promise<TransactionMessage>} The constructed transaction message.
-   * @throws {ValueError} If the amount exceeds the representable range, or if the memo makes the transaction exceed the maximum transaction size.
+   * @throws {ValueError} If the amount exceeds the representable range, if the memo is not a string, or if the memo makes the transaction exceed the maximum transaction size.
    * @todo Support Token-2022 (Token Extensions Program).
    */
   async _buildSPLTransferTransactionMessage (token, recipient, amount, solanaOptions = {}) {
+    const { memo } = solanaOptions
+
     if (typeof amount === 'bigint' && amount > MAX_U64) {
       throw new ValueError('Amount exceeds u64 maximum value')
     }
     if (typeof amount === 'number' && amount > Number.MAX_SAFE_INTEGER) {
       throw new ValueError('Amount exceeds safe integer range')
+    }
+    // The memo is encoded as UTF-8, and the encoder stringifies whatever it is given, so a
+    // non-string would be written to the chain as its string form rather than rejected.
+    if (memo !== undefined && typeof memo !== 'string') {
+      throw new ValueError('Memo must be a string')
     }
 
     const addr = await this.getAddress()
@@ -475,8 +482,6 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
       owner: recipientPublicKey,
       tokenProgram: TOKEN_PROGRAM_ADDRESS
     })
-
-    const { memo } = solanaOptions
 
     const instructions = []
 

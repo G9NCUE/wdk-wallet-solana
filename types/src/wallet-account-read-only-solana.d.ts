@@ -116,7 +116,7 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
      * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<TransactionMessage>} The constructed transaction message.
-     * @throws {ValueError} If the amount exceeds the representable range, or if the memo makes the transaction exceed the maximum transaction size.
+     * @throws {ValueError} If the amount exceeds the representable range, if the memo is not a string, or if the memo makes the transaction exceed the maximum transaction size.
      * @todo Support Token-2022 (Token Extensions Program).
      */
     protected _buildSPLTransferTransactionMessage(token: string, recipient: string, amount: number | bigint, solanaOptions?: SolanaTransferOptions): Promise<TransactionMessage>;

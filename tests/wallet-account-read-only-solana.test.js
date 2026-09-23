@@ -1015,6 +1015,22 @@ describe('WalletAccountReadOnlySolana', () => {
       expect(result).toEqual({ fee: 7000n })
     })
 
+    it('should throw when the memo is not a string', async () => {
+      await expect(
+        readOnlyAccount.quoteTransfer(
+          {
+            token: MOCK_TOKEN_MINT,
+            recipient: MOCK_RECIPIENT,
+            amount: 1000000n
+          },
+          { memo: 1000 }
+        )
+      ).rejects.toThrow('Memo must be a string')
+
+      expect(mockRpc.getAccountInfo).not.toHaveBeenCalled()
+      expect(mockRpc.getFeeForMessage).not.toHaveBeenCalled()
+    })
+
     it('should throw when the memo makes the transaction too large', async () => {
       mockRpc.getAccountInfo.mockReturnValue({
         send: jest.fn().mockResolvedValue({
