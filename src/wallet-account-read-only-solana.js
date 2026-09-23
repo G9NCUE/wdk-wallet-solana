@@ -451,7 +451,7 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
    * @todo Support Token-2022 (Token Extensions Program).
    */
   async _buildSPLTransferTransactionMessage (token, recipient, amount, solanaOptions = {}) {
-    const { memo } = solanaOptions
+    const { memo } = solanaOptions ?? {}
 
     if (typeof amount === 'bigint' && amount > MAX_U64) {
       throw new ValueError('Amount exceeds u64 maximum value')

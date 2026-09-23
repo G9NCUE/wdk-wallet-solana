@@ -1015,6 +1015,41 @@ describe('WalletAccountReadOnlySolana', () => {
       expect(result).toEqual({ fee: 7000n })
     })
 
+    it('should quote a transfer when the Solana options are null', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 5000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer(
+        {
+          token: MOCK_TOKEN_MINT,
+          recipient: MOCK_RECIPIENT,
+          amount: 1000000n
+        },
+        null
+      )
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([TOKEN_PROGRAM_ADDRESS])
+      expect(result).toEqual({ fee: 5000n })
+    })
+
     it('should throw when the memo is not a string', async () => {
       await expect(
         readOnlyAccount.quoteTransfer(
