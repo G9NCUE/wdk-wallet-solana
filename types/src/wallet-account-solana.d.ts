@@ -1,3 +1,18 @@
+/**
+ * @template TSignedTransaction
+ * @typedef {import('@tetherto/wdk-wallet').IWalletAccount<TSignedTransaction>} IWalletAccount
+ */
+/** @typedef {import('@tetherto/wdk-wallet').KeyPair} KeyPair */
+/** @typedef {import('@tetherto/wdk-wallet').TransactionResult} TransactionResult */
+/** @typedef {import('@tetherto/wdk-wallet').TransferOptions} TransferOptions */
+/** @typedef {import('@tetherto/wdk-wallet').TransferResult} TransferResult */
+/** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransferOptions} SolanaTransferOptions */
+/** @typedef {import('@solana/errors').SolanaError} SolanaError */
+/** @typedef {import('@solana/signers').TransactionPartialSigner} TransactionPartialSigner */
+/** @typedef {import('./signers/signer-solana.js').ISignerSolana} ISignerSolana */
+/** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransaction} SolanaTransaction */
+/** @typedef {import('./wallet-account-read-only-solana.js').SolanaWalletConfig} SolanaWalletConfig */
+/** @typedef {import('@solana/transactions').FullySignedTransaction} FullySignedTransaction */
 /** @implements {IWalletAccount<FullySignedTransaction>} */
 export default class WalletAccountSolana extends WalletAccountReadOnlySolana implements IWalletAccount<FullySignedTransaction> {
     /**
@@ -11,8 +26,9 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      */
     static at(seed: string | Uint8Array, path: string, config?: SolanaWalletConfig): Promise<WalletAccountSolana>;
     /**
-     * Creates a new solana wallet account.
+     * Creates a new solana wallet account from a seed.
      *
+     * @overload
      * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
      * @param {string} path - The SLIP-0010 derivation path (e.g. "0'/0'/0'").
      * @param {SolanaWalletConfig} [config] - The configuration object.
@@ -20,34 +36,30 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      */
     constructor(seed: string | Uint8Array, path: string, config?: SolanaWalletConfig);
     /**
-     * @private
+     * Creates a new solana wallet account using a signer.
+     *
+     * @overload
+     * @param {ISignerSolana} signer - A signer implementing the Solana signer interface, its address resolved.
+     * @param {SolanaWalletConfig} [config] - The configuration object.
+     * @throws {ValueError} If the signer's address is not known yet (await `signer.getAddress()` first).
      */
-    private _seed;
+    constructor(signer: ISignerSolana, config?: SolanaWalletConfig);
     /**
-     * @private
-     */
-    private _path;
-    /**
-     * The Ed25519 key pair signer for signing transactions.
+     * The signer holding the account's key.
      *
      * @private
-     * @type {KeyPairSigner | undefined}
+     * @type {ISignerSolana}
      */
     private _signer;
     /**
-     * Raw Ed25519 public key bytes (32 bytes).
+     * The signer as `@solana/signers` sees it, built on first use.
      *
      * @private
-     * @type {Uint8Array}
+     * @type {TransactionPartialSigner | undefined}
      */
-    private _rawPublicKey;
-    /**
-     * Raw Ed25519 private key bytes (32 bytes).
-     *
-     * @private
-     * @type {Uint8Array | undefined}
-     */
-    private _rawPrivateKey;
+    private _kitSigner;
+    /** @private */
+    private _disposed;
     /**
      * The derivation path's index of this account.
      *
@@ -55,11 +67,11 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      */
     get index(): number;
     /**
-     * The derivation path of this account.
+     * The derivation path of this account, or null for a signer not bound to a path.
      *
-     * @type {string}
+     * @type {string | null}
      */
-    get path(): string;
+    get path(): string | null;
     /**
      * The account's key pair.
      *
@@ -121,7 +133,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
     protected _isSignedTransaction(tx: SolanaTransaction | FullySignedTransaction): boolean;
     /**
      * Signs a base64-encoded serialized transaction (e.g. a swap or bridge payload built
-     * by an external API) with the account's key pair.
+     * by an external API) with the account's signer.
      *
      * @protected
      * @param {string} serializedTransaction - The base64-encoded serialized transaction.
@@ -160,16 +172,21 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
     toReadOnlyAccount(): Promise<WalletAccountReadOnlySolana>;
     _solanaReadOnlyAccount: WalletAccountReadOnlySolana;
     /**
-     * Disposes the wallet account, erasing the private key from the memory.
+     * Disposes the wallet account and its signer, erasing the private key from the memory.
      */
     dispose(): void;
     /**
-     * Creates a new {@link KeyPairSigner} from a 32-bytes `Uint8Array` private key.
+     * Returns the account's signer as `@solana/signers` expects it: an address and a function that
+     * signs transactions, each through {@link ISignerSolana#signTransactionMessage} on its message bytes.
+     * Every transaction the account builds is signed through it, alongside any other signer the
+     * transaction carries (a fee payer that is not the account, an extra signing account).
      *
      * @private
-     * @returns {Promise<KeyPairSigner>} - The keypair signer
+     * @returns {Promise<TransactionPartialSigner>} The signer.
      */
     private _getSigner;
+    /** @private */
+    private _assertNotDisposed;
 }
 export type IWalletAccount<TSignedTransaction> = import("@tetherto/wdk-wallet").IWalletAccount<TSignedTransaction>;
 export type KeyPair = import("@tetherto/wdk-wallet").KeyPair;
@@ -178,7 +195,8 @@ export type TransferOptions = import("@tetherto/wdk-wallet").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet").TransferResult;
 export type SolanaTransferOptions = import("./wallet-account-read-only-solana.js").SolanaTransferOptions;
 export type SolanaError = import("@solana/errors").SolanaError;
-export type KeyPairSigner = import("@solana/signers").KeyPairSigner;
+export type TransactionPartialSigner = import("@solana/signers").TransactionPartialSigner;
+export type ISignerSolana = import("./signers/signer-solana.js").ISignerSolana;
 export type SolanaTransaction = import("./wallet-account-read-only-solana.js").SolanaTransaction;
 export type SolanaWalletConfig = import("./wallet-account-read-only-solana.js").SolanaWalletConfig;
 export type FullySignedTransaction = import("@solana/transactions").FullySignedTransaction;

@@ -17,3 +17,4 @@ export type SolanaTransactionDetails = import("./src/wallet-account-read-only-so
 export type SolanaTransferOptions = import("./src/wallet-account-read-only-solana.js").SolanaTransferOptions;
 export type SolanaTransaction = import("./src/wallet-account-solana.js").SolanaTransaction;
 export type SolanaWalletConfig = import("./src/wallet-account-solana.js").SolanaWalletConfig;
+export { ISignerSolana, SeedSignerSolana } from "./src/signers/index.js";

@@ -2,10 +2,14 @@ export default class WalletManagerSolana extends WalletManager {
     /**
      * Creates a new wallet manager for the solana blockchain.
      *
-     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+     * Accepts a seed, as before, or a root signer. The default signer must be derivable; a signer that
+     * cannot derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
+     *
+     * @param {string | Uint8Array | ISignerSolana} seedOrSigner - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, a raw BIP-32 master seed (16-64 bytes), or a derivable root signer.
      * @param {SolanaWalletConfig} [config] - The configuration object.
+     * @throws {InvalidSignerError} If the default signer doesn't support account derivation.
      */
-    constructor(seed: string | Uint8Array, config?: SolanaWalletConfig);
+    constructor(seedOrSigner: string | Uint8Array | ISignerSolana, config?: SolanaWalletConfig);
     /**
      * A Solana RPC client for HTTP requests.
      *
@@ -26,10 +30,25 @@ export default class WalletManagerSolana extends WalletManager {
      * @example
      * // Returns the account with derivation path m/44'/501'/index'/0'
      * const account = await wallet.getAccount(1);
+     * @overload
      * @param {number} [index] - The index of the account to get (default: 0).
+     * @param {Object} [options] - Account options.
+     * @param {string} [options.signerName] - The signer name, when not the default signer.
      * @returns {Promise<WalletAccountSolana>} The account.
      */
-    getAccount(index?: number): Promise<WalletAccountSolana>;
+    getAccount(index?: number, options?: {
+        signerName?: string;
+    }): Promise<WalletAccountSolana>;
+    /**
+     * Returns the wallet account of a signer registered by name with {@link addSigner}: the signer's
+     * own account for a signer that cannot derive, its first account for one that can.
+     *
+     * @overload
+     * @param {string} signerName - The signer name.
+     * @returns {Promise<WalletAccountSolana>} The account.
+     * @throws {NoSuchElementError} If no signer exists with the given name.
+     */
+    getAccount(signerName: string): Promise<WalletAccountSolana>;
     /**
      * Returns the wallet account at a specific SLIP-0010 derivation path.
      *
@@ -37,9 +56,22 @@ export default class WalletManagerSolana extends WalletManager {
      * // Returns the account with derivation path m/44'/501'/0'/0'/1'
      * const account = await wallet.getAccountByPath("0'/0'/1'");
      * @param {string} path - The derivation path (e.g. "0'/0'/0'").
+     * @param {Object} [options] - Account options.
+     * @param {string} [options.signerName] - The signer name, when not the default signer.
      * @returns {Promise<WalletAccountSolana>} The account.
      */
-    getAccountByPath(path: string): Promise<WalletAccountSolana>;
+    getAccountByPath(path: string, options?: {
+        signerName?: string;
+    }): Promise<WalletAccountSolana>;
+    /**
+     * Builds the account of a signer, its address resolved first (a remote signer learns it on the
+     * first call).
+     *
+     * @private
+     * @param {ISignerSolana} signer - The signer.
+     * @returns {Promise<WalletAccountSolana>} The account.
+     */
+    private _accountOf;
     /**
      * Builds the account config, injecting the manager's shared rpc client so accounts reuse
      * it instead of opening their own.
@@ -60,5 +92,6 @@ export type SolanaRpc = ReturnType<typeof import("@solana/rpc").createSolanaRpc>
 export type Commitment = import("@solana/rpc-types").Commitment;
 export type FeeRates = import("@tetherto/wdk-wallet").FeeRates;
 export type SolanaWalletConfig = import("./wallet-account-solana.js").SolanaWalletConfig;
+export type ISignerSolana = import("./signers/signer-solana.js").ISignerSolana;
 import WalletManager from "@tetherto/wdk-wallet";
 import WalletAccountSolana from "./wallet-account-solana.js";

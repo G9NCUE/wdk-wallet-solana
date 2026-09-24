@@ -50,6 +50,42 @@ wallet.dispose()
 - **Fee Estimation**: Retrieve current network fee rates and quote transaction costs
 - **Read-Only Accounts**: Monitor any Solana address without a private key
 - **Secure Memory Disposal**: Clear private keys from memory when done
+- **Pluggable Signers**: Keep the key in a hardware device or a key service behind `ISignerSolana`
+
+## Signers
+
+The key an account signs with lives in a signer. A seed phrase gives a `SeedSignerSolana` (SLIP-0010,
+`m/44'/501'`), which is what the wallet builds when you pass a seed. Any other key custody implements
+`ISignerSolana` and is passed instead of the seed: the account, its transfers, fees and token accounts
+stay the same, only the signing moves.
+
+```javascript
+import WalletManagerSolana from '@tetherto/wdk-wallet-solana'
+import { SeedSignerSolana } from '@tetherto/wdk-wallet-solana/signers'
+
+// a derivable signer as the default: accounts 0, 1, 2… at m/44'/501'/i'/0'
+const wallet = new WalletManagerSolana(new SeedSignerSolana(seedPhrase), { provider })
+
+// a signer holding a single key (a key service account, for instance), registered by name
+wallet.addSigner('service', serviceSigner)
+const serviceAccount = await wallet.getAccount('service')
+```
+
+A signer implements:
+
+| Member | |
+|---|---|
+| `isDerivable`, `path`, `address`, `keyPair` | as `ISigner`; `keyPair.privateKey` is `null` when the key never leaves the signer |
+| `derive(relPath)` | a child signer, every level hardened |
+| `getAddress()` | the address; a remote signer may only learn it here |
+| `sign(message)` | an Ed25519 signature over the UTF-8 bytes, hex-encoded |
+| `signTransactionMessage(messageBytes)` | an Ed25519 signature over a transaction's compiled message, 64 bytes |
+| `dispose()` | erases the signer's secret material |
+
+A signer signs message bytes and never builds a transaction, so one transaction can carry several
+signers (a fee payer that is not the account, an extra signing account): each signs the same message
+and its signature joins the transaction's signature map. An account built on a signer needs the
+signer's address; `WalletManagerSolana` resolves it before building the account.
 
 ## Compatibility
 

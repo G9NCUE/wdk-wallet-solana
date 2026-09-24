@@ -14,9 +14,10 @@
 
 'use strict'
 
-import WalletManager, { ProviderRequiredError } from '@tetherto/wdk-wallet'
+import WalletManager, { InvalidSignerError, ProviderRequiredError } from '@tetherto/wdk-wallet'
 
 import WalletAccountSolana from './wallet-account-solana.js'
+import SeedSignerSolana from './signers/seed-signer-solana.js'
 
 /** @typedef {ReturnType<typeof import('@solana/rpc').createSolanaRpc>} SolanaRpc */
 /** @typedef {import('@solana/rpc-types').Commitment} Commitment */
@@ -24,6 +25,8 @@ import WalletAccountSolana from './wallet-account-solana.js'
 /** @typedef {import('@tetherto/wdk-wallet').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-solana.js').SolanaWalletConfig} SolanaWalletConfig */
+
+/** @typedef {import('./signers/signer-solana.js').ISignerSolana} ISignerSolana */
 
 const FEE_RATE_NORMAL_MULTIPLIER = 110n
 
@@ -35,11 +38,31 @@ export default class WalletManagerSolana extends WalletManager {
   /**
    * Creates a new wallet manager for the solana blockchain.
    *
-   * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+   * Accepts a seed, as before, or a root signer. The default signer must be derivable; a signer that
+   * cannot derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
+   *
+   * @param {string | Uint8Array | ISignerSolana} seedOrSigner - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, a raw BIP-32 master seed (16-64 bytes), or a derivable root signer.
    * @param {SolanaWalletConfig} [config] - The configuration object.
+   * @throws {InvalidSignerError} If the default signer doesn't support account derivation.
    */
-  constructor (seed, config = {}) {
-    super(seed, config)
+  constructor (seedOrSigner, config = {}) {
+    const fromSeed = typeof seedOrSigner === 'string' || seedOrSigner instanceof Uint8Array
+
+    if (!fromSeed && !seedOrSigner?.isDerivable) {
+      throw new InvalidSignerError('The default signer must be derivable. Non-derivable signers (e.g. private-key signers) can only be registered by name via addSigner.')
+    }
+
+    super(seedOrSigner, config)
+
+    if (fromSeed) {
+      /**
+       * The default signer: a seed signer on the wallet's seed, which keeps the master key.
+       *
+       * @protected
+       * @type {ISignerSolana}
+       */
+      this._defaultSigner = new SeedSignerSolana(this.seed)
+    }
 
     /**
      * The solana wallet configuration.
@@ -75,11 +98,40 @@ export default class WalletManagerSolana extends WalletManager {
    * @example
    * // Returns the account with derivation path m/44'/501'/index'/0'
    * const account = await wallet.getAccount(1);
+   * @overload
    * @param {number} [index] - The index of the account to get (default: 0).
+   * @param {Object} [options] - Account options.
+   * @param {string} [options.signerName] - The signer name, when not the default signer.
    * @returns {Promise<WalletAccountSolana>} The account.
    */
-  async getAccount (index = 0) {
-    return await this.getAccountByPath(`${index}'/0'`)
+
+  /**
+   * Returns the wallet account of a signer registered by name with {@link addSigner}: the signer's
+   * own account for a signer that cannot derive, its first account for one that can.
+   *
+   * @overload
+   * @param {string} signerName - The signer name.
+   * @returns {Promise<WalletAccountSolana>} The account.
+   * @throws {NoSuchElementError} If no signer exists with the given name.
+   */
+
+  async getAccount (indexOrSignerName = 0, options = {}) {
+    if (typeof indexOrSignerName === 'string') {
+      const key = `${indexOrSignerName}#self`
+
+      if (!this._accounts[key]) {
+        const signer = this.getSigner(indexOrSignerName)
+        const accountSigner = signer.isDerivable
+          ? await signer.derive(signer.path.split('/').slice(3).join('/'))
+          : signer
+
+        this._accounts[key] = await this._accountOf(accountSigner)
+      }
+
+      return this._accounts[key]
+    }
+
+    return await this.getAccountByPath(`${indexOrSignerName}'/0'`, options)
   }
 
   /**
@@ -89,16 +141,48 @@ export default class WalletManagerSolana extends WalletManager {
    * // Returns the account with derivation path m/44'/501'/0'/0'/1'
    * const account = await wallet.getAccountByPath("0'/0'/1'");
    * @param {string} path - The derivation path (e.g. "0'/0'/0'").
+   * @param {Object} [options] - Account options.
+   * @param {string} [options.signerName] - The signer name, when not the default signer.
    * @returns {Promise<WalletAccountSolana>} The account.
    */
-  async getAccountByPath (path) {
-    if (!this._accounts[path]) {
-      const account = new WalletAccountSolana(this.seed, path, this._accountConfig())
+  async getAccountByPath (path, options = {}) {
+    const { signerName } = options
+    const key = signerName === undefined ? path : `${signerName}:${path}`
 
-      this._accounts[path] = account
+    if (!this._accounts[key]) {
+      const signer = this.getSigner(signerName)
+
+      this._accounts[key] = await this._accountOf(await signer.derive(path))
     }
 
-    return this._accounts[path]
+    return this._accounts[key]
+  }
+
+  /**
+   * Disposes the wallet manager: every account it created, then its signers.
+   */
+  dispose () {
+    // the base class disposes only the accounts that expose a private key; an account on a signer
+    // that keeps its key elsewhere must be disposed too, or it keeps signing
+    for (const account of Object.values(this._accounts)) {
+      account.dispose()
+    }
+
+    super.dispose()
+  }
+
+  /**
+   * Builds the account of a signer, its address resolved first (a remote signer learns it on the
+   * first call).
+   *
+   * @private
+   * @param {ISignerSolana} signer - The signer.
+   * @returns {Promise<WalletAccountSolana>} The account.
+   */
+  async _accountOf (signer) {
+    await signer.getAddress()
+
+    return new WalletAccountSolana(signer, this._accountConfig())
   }
 
   /**
