@@ -76,10 +76,11 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * Quotes the costs of a transfer operation.
      *
      * @param {TransferOptions} options - The transfer's options.
+     * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
      * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
      */
-    quoteTransfer(options: TransferOptions): Promise<Omit<TransferResult, "hash">>;
+    quoteTransfer(options: TransferOptions, solanaOptions?: SolanaTransferOptions): Promise<Omit<TransferResult, "hash">>;
     /**
      * Retrieves a transaction receipt by its signature
      *
@@ -122,12 +123,12 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      * @param {string} token - The SPL token mint address (base58-encoded public key).
      * @param {string} recipient - The recipient's wallet address (base58-encoded public key).
      * @param {number | bigint} amount - The amount to transfer in token's base units (must be ≤ 2^64-1).
+     * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<TransactionMessage>} The constructed transaction message.
-     * @throws {ValueError} If the amount exceeds the representable range.
+     * @throws {ValueError} If the amount exceeds the representable range, if the memo is not a string, or if the memo makes the transaction exceed the maximum transaction size.
      * @todo Support Token-2022 (Token Extensions Program).
-     * @todo Support transfer with memo for tokens that require it.
      */
-    protected _buildSPLTransferTransactionMessage(token: string, recipient: string, amount: number | bigint): Promise<TransactionMessage>;
+    protected _buildSPLTransferTransactionMessage(token: string, recipient: string, amount: number | bigint, solanaOptions?: SolanaTransferOptions): Promise<TransactionMessage>;
     /**
      * Builds a transaction message for native SOL transfer.
      * Creates a transfer instruction for sending SOL.
@@ -195,7 +196,6 @@ export type TransferResult = import("@tetherto/wdk-wallet").TransferResult;
 export type TransactionReceipt = import("@tetherto/wdk-wallet").TransactionReceipt;
 export type WaitForTransactionOptions = import("@tetherto/wdk-wallet").WaitForTransactionOptions;
 export type TransactionMessage = import("@solana/transaction-messages").TransactionMessage;
-export type FullySignedTransaction = import("@solana/transactions").FullySignedTransaction;
 export type Transaction = import("@solana/transactions").Transaction;
 export type SolanaRpc = ReturnType<typeof import("@solana/rpc").createSolanaRpc>;
 export type SolanaTransactionReceipt = ReturnType<import("@solana/rpc-api").SolanaRpcApi["getTransaction"]>;
@@ -212,6 +212,15 @@ export type SolanaTransactionDetails = {
      * - The native Solana transaction object, or null while the transaction is pending.
      */
     transaction: SolanaTransactionReceipt | null;
+};
+/**
+ * The Solana-specific options of a transfer operation, next to the chain-agnostic {@link TransferOptions}.
+ */
+export type SolanaTransferOptions = {
+    /**
+     * - A UTF-8 memo to attach to the transfer, ignored when empty. It has to be short enough for the transfer to stay within the maximum transaction size. Tokens whose recipient token account enables the memo transfer extension reject transfers that carry none, but that extension is Token-2022 only and this account does not transfer Token-2022 mints yet, so today the memo serves as a payment reference.
+     */
+    memo?: string;
 };
 export type SimpleSolanaTransaction = {
     /**

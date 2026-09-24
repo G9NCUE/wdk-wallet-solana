@@ -350,6 +350,33 @@ describe('@tetherto/wdk-wallet-solana', () => {
     expect(fee).toBe(feeEstimate)
   })
 
+  test('should derive an account by its path and transfer a token attaching a memo', async () => {
+    const account = await wallet.getAccountByPath("0'/0'")
+
+    const TRANSFER = {
+      token: testToken.mint,
+      recipient: TEST_RECIPIENT_ADDRESS,
+      amount: 100
+    }
+
+    const SOLANA_OPTIONS = { memo: 'wdk memo' }
+
+    const EXPECTED_MEMO_LOG = 'Program log: Memo (len 8): "wdk memo"'
+
+    const tokenBalanceBefore = await account.getTokenBalance(testToken.mint)
+
+    const { hash, fee } = await account.transfer(TRANSFER, SOLANA_OPTIONS)
+    await confirmTransaction(rpc, hash)
+    const receipt = await account.getTransaction(hash)
+
+    const tokenBalance = await account.getTokenBalance(testToken.mint)
+
+    expect(receipt.success).toBe(true)
+    expect(receipt.fee).toBe(fee)
+    expect(receipt.transaction.meta.logMessages).toContain(EXPECTED_MEMO_LOG)
+    expect(tokenBalance).toBe(tokenBalanceBefore - 100n)
+  })
+
   test('should derive two accounts by their paths, transfer a token from account 1 to 2 and get the correct balances and token balances', async () => {
     const account0 = await wallet.getAccountByPath("0'/0'")
     const account1 = await wallet.getAccountByPath("1'/0'")

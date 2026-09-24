@@ -14,5 +14,6 @@ export type WaitForTransactionOptions = import("@tetherto/wdk-wallet").WaitForTr
 export type SimpleSolanaTransaction = import("./src/wallet-account-read-only-solana.js").SimpleSolanaTransaction;
 export type SolanaTransactionReceipt = import("./src/wallet-account-read-only-solana.js").SolanaTransactionReceipt;
 export type SolanaTransactionDetails = import("./src/wallet-account-read-only-solana.js").SolanaTransactionDetails;
+export type SolanaTransferOptions = import("./src/wallet-account-read-only-solana.js").SolanaTransferOptions;
 export type SolanaTransaction = import("./src/wallet-account-solana.js").SolanaTransaction;
 export type SolanaWalletConfig = import("./src/wallet-account-solana.js").SolanaWalletConfig;

@@ -144,13 +144,14 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      * Transfers a token to another address.
      *
      * @param {TransferOptions} options - The transfer's options.
+     * @param {SolanaTransferOptions} [solanaOptions] - The transfer's Solana-specific options.
      * @returns {Promise<TransferResult>} The transfer's result.
      * @throws {AssertionError} If the wallet account has been disposed.
      * @throws {ProviderRequiredError} If the wallet is not connected to a provider.
      * @throws {MaximumFeeExceededError} If the transfer's cost exceeds the maximum transfer fee option.
      * @note only SPL tokens - won't work for native SOL
      */
-    transfer(options: TransferOptions): Promise<TransferResult>;
+    transfer(options: TransferOptions, solanaOptions?: SolanaTransferOptions): Promise<TransferResult>;
     /**
      * Returns a read-only copy of the account.
      *
@@ -175,6 +176,7 @@ export type KeyPair = import("@tetherto/wdk-wallet").KeyPair;
 export type TransactionResult = import("@tetherto/wdk-wallet").TransactionResult;
 export type TransferOptions = import("@tetherto/wdk-wallet").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet").TransferResult;
+export type SolanaTransferOptions = import("./wallet-account-read-only-solana.js").SolanaTransferOptions;
 export type SolanaError = import("@solana/errors").SolanaError;
 export type KeyPairSigner = import("@solana/signers").KeyPairSigner;
 export type SolanaTransaction = import("./wallet-account-read-only-solana.js").SolanaTransaction;

@@ -25,8 +25,10 @@ import {
 } from '@jest/globals'
 import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages'
 import { signTransactionMessageWithSigners } from '@solana/signers'
-import { getBase64EncodedWireTransaction } from '@solana/transactions'
-import { getBase64Decoder } from '@solana/codecs'
+import { getBase64EncodedWireTransaction, getTransactionDecoder } from '@solana/transactions'
+import { getBase64Decoder, getBase64Encoder } from '@solana/codecs'
+import { MEMO_PROGRAM_ADDRESS } from '@solana-program/memo'
+import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
 import WalletManagerSolana from '../src/wallet-manager-solana.js'
 import WalletAccountSolana from '../src/wallet-account-solana.js'
 import WalletAccountReadOnlySolana from '../src/wallet-account-read-only-solana.js'
@@ -1178,6 +1180,49 @@ describe('WalletAccountSolana', () => {
         expect(result.hash).toBe('transfer-sig')
         expect(result.fee).toBe(5000n)
         expect(mockRpc.sendTransaction).toHaveBeenCalled()
+      })
+
+      it('should send an SPL token transfer carrying a memo', async () => {
+        // 'wdk memo' encoded as UTF-8.
+        const EXPECTED_MEMO_DATA = new Uint8Array([119, 100, 107, 32, 109, 101, 109, 111])
+
+        const mintData = new Uint8Array(165)
+        mockRpc.getAccountInfo.mockReturnValue({
+          send: jest.fn().mockResolvedValue({
+            value: { data: mintData }
+          })
+        })
+        mockRpc.getFeeForMessage.mockReturnValue({
+          send: jest.fn().mockResolvedValue({ value: 5000 })
+        })
+        mockRpc.sendTransaction.mockReturnValue({
+          send: jest.fn().mockResolvedValue('memo-transfer-sig')
+        })
+
+        account._rpc = mockRpc
+
+        const result = await account.transfer(
+          {
+            token: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            recipient: '11111111111111111111111111111111',
+            amount: 1000000n
+          },
+          { memo: 'wdk memo' }
+        )
+
+        const [wireTransaction] = mockRpc.sendTransaction.mock.calls[0]
+        const transaction = getTransactionDecoder()
+          .decode(getBase64Encoder().encode(wireTransaction))
+        const compiledMessage = getCompiledTransactionMessageDecoder()
+          .decode(transaction.messageBytes)
+        const programs = compiledMessage.instructions.map(
+          (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+        )
+
+        expect(programs).toEqual([MEMO_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS])
+        expect(compiledMessage.instructions[0].data).toEqual(EXPECTED_MEMO_DATA)
+        expect(result.hash).toBe('memo-transfer-sig')
+        expect(result.fee).toBe(5000n)
       })
     })
   })

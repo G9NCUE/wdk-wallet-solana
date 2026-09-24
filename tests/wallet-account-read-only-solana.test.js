@@ -21,12 +21,14 @@ import {
   compileTransaction,
   getBase64EncodedWireTransaction
 } from '@solana/transactions'
+import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages'
+import { getBase64Encoder } from '@solana/codecs'
 import {
-  AccountState,
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   findAssociatedTokenPda,
-  getTokenEncoder,
   TOKEN_PROGRAM_ADDRESS
 } from '@solana-program/token'
+import { MEMO_PROGRAM_ADDRESS } from '@solana-program/memo'
 
 import WalletAccountReadOnlySolana from '../src/wallet-account-read-only-solana.js'
 import { NoSuchElementError, ValueError } from '@tetherto/wdk-wallet'
@@ -934,6 +936,225 @@ describe('WalletAccountReadOnlySolana', () => {
         amount: 1000000n
       })
 
+      expect(result).toEqual({ fee: 5000n })
+    })
+
+    it('should attach the memo before the transfer instruction', async () => {
+      // 'wdk memo' encoded as UTF-8.
+      const EXPECTED_MEMO_DATA = new Uint8Array([119, 100, 107, 32, 109, 101, 109, 111])
+
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 5000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer(
+        {
+          token: MOCK_TOKEN_MINT,
+          recipient: MOCK_RECIPIENT,
+          amount: 1000000n
+        },
+        { memo: 'wdk memo' }
+      )
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([MEMO_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS])
+      expect(compiledMessage.instructions[0].data).toEqual(EXPECTED_MEMO_DATA)
+      expect(result).toEqual({ fee: 5000n })
+    })
+
+    it('should attach the memo after the ATA creation and before the transfer', async () => {
+      // 'wdk memo' encoded as UTF-8.
+      const EXPECTED_MEMO_DATA = new Uint8Array([119, 100, 107, 32, 109, 101, 109, 111])
+
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: null })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 7000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer(
+        {
+          token: MOCK_TOKEN_MINT,
+          recipient: MOCK_RECIPIENT,
+          amount: 1000000n
+        },
+        { memo: 'wdk memo' }
+      )
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([
+        ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+        MEMO_PROGRAM_ADDRESS,
+        TOKEN_PROGRAM_ADDRESS
+      ])
+      expect(compiledMessage.instructions[1].data).toEqual(EXPECTED_MEMO_DATA)
+      expect(result).toEqual({ fee: 7000n })
+    })
+
+    it('should quote a transfer when the Solana options are null', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 5000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer(
+        {
+          token: MOCK_TOKEN_MINT,
+          recipient: MOCK_RECIPIENT,
+          amount: 1000000n
+        },
+        null
+      )
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([TOKEN_PROGRAM_ADDRESS])
+      expect(result).toEqual({ fee: 5000n })
+    })
+
+    it('should throw when the memo is not a string', async () => {
+      await expect(
+        readOnlyAccount.quoteTransfer(
+          {
+            token: MOCK_TOKEN_MINT,
+            recipient: MOCK_RECIPIENT,
+            amount: 1000000n
+          },
+          { memo: 1000 }
+        )
+      ).rejects.toThrow('Memo must be a string')
+
+      expect(mockRpc.getAccountInfo).not.toHaveBeenCalled()
+      expect(mockRpc.getFeeForMessage).not.toHaveBeenCalled()
+    })
+
+    it('should throw when the memo makes the transaction too large', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      await expect(
+        readOnlyAccount.quoteTransfer(
+          {
+            token: MOCK_TOKEN_MINT,
+            recipient: MOCK_RECIPIENT,
+            amount: 1000000n
+          },
+          { memo: 'x'.repeat(1000) }
+        )
+      ).rejects.toThrow('The transfer transaction is 1251 bytes, over the 1232 bytes limit. Shorten the memo.')
+
+      expect(mockRpc.getFeeForMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not attach a memo when the memo is empty', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 5000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer(
+        {
+          token: MOCK_TOKEN_MINT,
+          recipient: MOCK_RECIPIENT,
+          amount: 1000000n
+        },
+        { memo: '' }
+      )
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([TOKEN_PROGRAM_ADDRESS])
+      expect(result).toEqual({ fee: 5000n })
+    })
+
+    it('should not attach a memo when the transfer carries none', async () => {
+      mockRpc.getAccountInfo.mockReturnValue({
+        send: jest.fn().mockResolvedValue({
+          value: {
+            owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            lamports: 2039280n,
+            data: [Buffer.alloc(165).toString('base64'), 'base64']
+          }
+        })
+      })
+
+      mockRpc.getFeeForMessage.mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: 5000n })
+      })
+
+      const result = await readOnlyAccount.quoteTransfer({
+        token: MOCK_TOKEN_MINT,
+        recipient: MOCK_RECIPIENT,
+        amount: 1000000n
+      })
+
+      const [base64EncodedMessage] = mockRpc.getFeeForMessage.mock.calls[0]
+      const compiledMessage = getCompiledTransactionMessageDecoder()
+        .decode(getBase64Encoder().encode(base64EncodedMessage))
+      const programs = compiledMessage.instructions.map(
+        (instruction) => compiledMessage.staticAccounts[instruction.programAddressIndex]
+      )
+
+      expect(programs).toEqual([TOKEN_PROGRAM_ADDRESS])
       expect(result).toEqual({ fee: 5000n })
     })
 
