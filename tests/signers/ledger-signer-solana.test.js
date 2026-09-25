@@ -54,7 +54,7 @@ function fakeLedger ({ deviceStatus = 'CONNECTED', firmware = 'current', envelop
   const buildSignerSolana = async ({ sessionId }) => ({
     getAddress: (path, options) => {
       calls.push(`getAddress ${path} ${JSON.stringify(options)}`)
-      return action(async () => (await seed.derive(path.replace(/^44'\/501'\//, ''))).address)
+      return action(async () => (await seed.derive(path.replace(/^44'\/501'\//, ''))).getAddress())
     },
     signTransaction: (path, bytes) => {
       calls.push(`signTransaction ${path}`)
@@ -90,7 +90,7 @@ describe('LedgerSignerSolana', () => {
     const { calls, ...ledger } = fakeLedger()
     const signer = new LedgerSignerSolana(ledger)
 
-    expect(signer.address).toBeUndefined()
+    expect(signer.keyPair.publicKey).toBeNull()
     expect(await signer.getAddress()).toBe(ADDRESS_0)
     expect(signer.path).toBe("m/44'/501'/0'/0'")
     expect(signer.keyPair.privateKey).toBeNull()

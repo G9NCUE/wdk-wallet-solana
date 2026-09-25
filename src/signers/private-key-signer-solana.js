@@ -96,15 +96,6 @@ export default class PrivateKeySignerSolana extends ISignerSolana {
   }
 
   /**
-   * The signer's address.
-   *
-   * @type {string}
-   */
-  get address () {
-    return this._address
-  }
-
-  /**
    * The signer's key pair. The private key is null once the signer has been disposed.
    *
    * @type {KeyPair}

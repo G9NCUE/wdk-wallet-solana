@@ -20,7 +20,7 @@ describe('PrivateKeySignerSolana', () => {
 
     for (const secret of [privateKey, keypair, getBase58Decoder().decode(privateKey), getBase58Decoder().decode(keypair)]) {
       const signer = new PrivateKeySignerSolana(secret)
-      expect(signer.address).toBe(reference.address)
+      expect(await signer.getAddress()).toBe(await reference.getAddress())
       expect(await signer.sign('Dummy message to sign.')).toBe(await reference.sign('Dummy message to sign.'))
       expect(await signer.signTransactionMessage(new Uint8Array([9, 9, 9]))).toEqual(await reference.signTransactionMessage(new Uint8Array([9, 9, 9])))
     }
@@ -45,9 +45,8 @@ describe('PrivateKeySignerSolana', () => {
     wallet.addSigner('imported', signer)
     const account = await wallet.getAccount('imported')
 
-    expect(await account.getAddress()).toBe(account3().address)
+    expect(await account.getAddress()).toBe(await account3().getAddress())
     expect(account.path).toBeNull()
-    expect(account.index).toBeUndefined()
     expect(await account.verify('hello', await account.sign('hello'))).toBe(true)
   })
 

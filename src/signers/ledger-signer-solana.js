@@ -120,15 +120,6 @@ export default class LedgerSignerSolana extends ISignerSolana {
   }
 
   /**
-   * The signer's address, once read from the device.
-   *
-   * @type {string | undefined}
-   */
-  get address () {
-    return this._address
-  }
-
-  /**
    * The signer's key pair: never a private key, the public key once the address has been read.
    *
    * @type {KeyPair}

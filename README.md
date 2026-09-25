@@ -90,8 +90,11 @@ A signer signs message bytes and never builds a transaction, so one transaction 
 ```javascript
 import { PrivateKeySignerSolana } from '@tetherto/wdk-wallet-solana/signers'
 
-wallet.addSigner('imported', new PrivateKeySignerSolana(secretKey))
+const signer = new PrivateKeySignerSolana(secretKey)
+wallet.addSigner('imported', signer)
 const imported = await wallet.getAccount('imported')
+// …
+signer.dispose() // yours: the wallet does not dispose it
 ```
 
 ### Ledger
