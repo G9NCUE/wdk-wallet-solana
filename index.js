@@ -38,7 +38,7 @@ export { default as WalletAccountReadOnlySolana } from './src/wallet-account-rea
 
 export { default as WalletAccountSolana } from './src/wallet-account-solana.js'
 
-export { ISignerSolana, SeedSignerSolana } from './src/signers/index.js'
+export { ISignerSolana, PrivateKeySignerSolana, SeedSignerSolana } from './src/signers/index.js'
 
 export {
   AssertionError,

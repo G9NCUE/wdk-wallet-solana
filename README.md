@@ -77,11 +77,39 @@ A signer implements:
 | `isDerivable`, `path`, `address`, `keyPair` | `path` is `null` for a single key; `address` is known once `getAddress()` resolved; `keyPair.privateKey` is `null` when the key never leaves the signer |
 | `derive(relPath)` | a child signer, every level hardened |
 | `getAddress()` | the address; a remote signer may only learn it here |
-| `sign(message)` | an Ed25519 signature over the UTF-8 bytes, hex-encoded |
+| `sign(message)` | an Ed25519 signature over the UTF-8 bytes (or their off-chain message), hex-encoded |
 | `signTransactionMessage(messageBytes)` | an Ed25519 signature over a transaction's compiled message, 64 bytes |
 | `dispose()` | erases the signer's secret material; safe to call twice |
 
 A signer signs message bytes and never builds a transaction, so one transaction can carry several signers (a fee payer that is not the account, an extra signing account): each signs the same message and its signature joins the transaction's signature map. An account built on a signer needs the signer's address; `WalletManagerSolana` resolves it before building the account. The account checks every signature a signer returns against its address.
+
+### Private key
+
+`PrivateKeySignerSolana` takes one key: 32 bytes, or a 64-byte keypair as `solana-keygen` and wallet exports write it, as bytes or base58. It has no path and does not derive, so it is registered by name.
+
+```javascript
+import { PrivateKeySignerSolana } from '@tetherto/wdk-wallet-solana/signers'
+
+wallet.addSigner('imported', new PrivateKeySignerSolana(secretKey))
+const imported = await wallet.getAccount('imported')
+```
+
+### Ledger
+
+`LedgerSignerSolana` follows Ledger's [Device Management Kit](https://developers.ledger.com/docs/device-interaction/integration/how_to/dmk): you build the kit with the transport you use and hand it in; the signer opens the session on first use and shares it with every account derived from it. The kits are optional peer dependencies: `npm install @ledgerhq/device-management-kit @ledgerhq/device-signer-kit-solana` plus a transport.
+
+```javascript
+import { DeviceManagementKitBuilder } from '@ledgerhq/device-management-kit'
+import { webHidTransportFactory } from '@ledgerhq/device-transport-kit-web-hid'
+import WalletManagerSolana from '@tetherto/wdk-wallet-solana'
+import LedgerSignerSolana from '@tetherto/wdk-wallet-solana/signers/ledger'
+
+const dmk = new DeviceManagementKitBuilder().addTransport(webHidTransportFactory).build()
+const wallet = new WalletManagerSolana(new LedgerSignerSolana({ dmk }), { provider })
+const account = await wallet.getAccount(0) // the first call opens the device picker in a browser
+```
+
+Transactions are signed on the device as their compiled message. The Solana app signs messages as [off-chain messages](https://docs.anza.xyz/proposals/off-chain-message-signing), which `verify` accepts, on a read-only account too.
 
 ## Compatibility
 

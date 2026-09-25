@@ -48,6 +48,18 @@
     "micro-key-producer": "0.7.6",
     "sodium-universal": "5.0.1"
   },
+  "peerDependencies": {
+    "@ledgerhq/device-management-kit": "^1.9.1",
+    "@ledgerhq/device-signer-kit-solana": "^1.13.2"
+  },
+  "peerDependenciesMeta": {
+    "@ledgerhq/device-management-kit": {
+      "optional": true
+    },
+    "@ledgerhq/device-signer-kit-solana": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@solana/kit": "4.0.0",
     "cross-env": "7.0.3",
@@ -64,6 +76,10 @@
     "./signers": {
       "types": "./types/src/signers/index.d.ts",
       "default": "./src/signers/index.js"
+    },
+    "./signers/ledger": {
+      "types": "./types/src/signers/ledger-signer-solana.d.ts",
+      "default": "./src/signers/ledger-signer-solana.js"
     },
     "./package": {
       "default": "./package.json"

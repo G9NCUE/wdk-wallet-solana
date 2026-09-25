@@ -165,7 +165,8 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
      */
     protected _decodeSerializedTransaction(serializedTransaction: string): Transaction;
     /**
-     * Verifies a message's signature.
+     * Verifies a message's signature: over the message itself, or over the off-chain message a
+     * hardware wallet signs for it.
      *
      * @param {string} message - The original message.
      * @param {string} signature - The signature to verify.

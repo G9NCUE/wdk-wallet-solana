@@ -55,7 +55,8 @@ export class ISignerSolana extends ISigner {
      */
     derive(relPath: string): Promise<ISignerSolana>;
     /**
-     * Signs a message: an Ed25519 signature over its UTF-8 bytes.
+     * Signs a message: an Ed25519 signature over its UTF-8 bytes, or over the off-chain message a
+     * hardware wallet builds for them.
      *
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The signature, hex-encoded.

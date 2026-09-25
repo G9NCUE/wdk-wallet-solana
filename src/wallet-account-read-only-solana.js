@@ -18,7 +18,7 @@ import { WalletAccountReadOnly, NoSuchElementError, ProviderRequiredError, Value
 
 import FailoverProvider from '@tetherto/wdk-failover-provider'
 
-import { address, getPublicKeyFromAddress } from '@solana/addresses'
+import { address, getAddressEncoder, getPublicKeyFromAddress } from '@solana/addresses'
 import { createSolanaRpc } from '@solana/rpc'
 import { pipe } from '@solana/functional'
 import {
@@ -43,6 +43,8 @@ import {
   TOKEN_PROGRAM_ADDRESS
 } from '@solana-program/token'
 import { isSignature, verifySignature } from '@solana/keys'
+
+import { getOffchainMessages } from './offchain-message.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').TransactionResult} TransactionResult */
 /** @typedef {import('@tetherto/wdk-wallet').TransferOptions} TransferOptions */
@@ -653,7 +655,8 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
   }
 
   /**
-   * Verifies a message's signature.
+   * Verifies a message's signature: over the message itself, or over the off-chain message a
+   * hardware wallet signs for it.
    *
    * @param {string} message - The original message.
    * @param {string} signature - The signature to verify.
@@ -666,9 +669,13 @@ export default class WalletAccountReadOnlySolana extends WalletAccountReadOnly {
     const addr = await this.getAddress()
     const publicKey = await getPublicKeyFromAddress(address(addr))
 
-    const isValid = await verifySignature(publicKey, signatureBytes, messageBytes)
+    for (const signed of [messageBytes, ...getOffchainMessages(messageBytes, getAddressEncoder().encode(addr))]) {
+      if (await verifySignature(publicKey, signatureBytes, signed)) {
+        return true
+      }
+    }
 
-    return isValid
+    return false
   }
 
   /**
