@@ -14,9 +14,25 @@
 
 'use strict'
 
-import { ISigner, NotImplementedError } from '@tetherto/wdk-wallet'
+import { ISigner, NotImplementedError, ValueError } from '@tetherto/wdk-wallet'
 
 /** @typedef {import('@tetherto/wdk-wallet').KeyPair} KeyPair */
+
+export const SOLANA_DERIVATION_PATH_PREFIX = "m/44'/501'"
+
+export const DEFAULT_ACCOUNT_PATH = "0'/0'"
+
+/**
+ * Asserts that every level of a derivation path is hardened, as SLIP-0010 requires for Ed25519.
+ *
+ * @param {string} path - The derivation path.
+ * @throws {ValueError} If a level is not hardened.
+ */
+export function assertFullHardenedPath (path) {
+  if (!path.split('/').every(level => level.endsWith("'"))) {
+    throw new ValueError('In Solana, every child path in a derivation path must be hardened.')
+  }
+}
 
 /**
  * The Solana signer interface: whatever holds an account's Ed25519 key, a seed in memory, a hardware
@@ -42,7 +58,7 @@ export class ISignerSolana extends ISigner {
 
   /**
    * The full SLIP-0010 derivation path of the signer's account (e.g. "m/44'/501'/0'/0'"), or null
-   * for a signer not bound to a path (e.g. a private-key signer).
+   * for a signer not bound to a path (e.g. a private-key signer). A derivable signer has one.
    *
    * @type {string | null}
    */
@@ -81,15 +97,6 @@ export class ISignerSolana extends ISigner {
   }
 
   /**
-   * Returns the signer's address.
-   *
-   * @returns {Promise<string>} The address.
-   */
-  async getAddress () {
-    throw new NotImplementedError('getAddress()')
-  }
-
-  /**
    * Signs a message: an Ed25519 signature over its UTF-8 bytes.
    *
    * @param {string} message - The message to sign.
@@ -111,7 +118,8 @@ export class ISignerSolana extends ISigner {
   }
 
   /**
-   * Disposes the signer, erasing its secret material from memory.
+   * Disposes the signer, erasing its secret material from memory. Safe to call more than once: a
+   * signer registered by name is disposed with its account and again with the manager.
    */
   dispose () {
     throw new NotImplementedError('dispose()')

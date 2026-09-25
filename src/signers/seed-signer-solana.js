@@ -23,15 +23,16 @@ import * as bip39 from 'bip39'
 // eslint-disable-next-line camelcase
 import { sodium_memzero } from 'sodium-universal'
 
-import * as curve from '@noble/ed25519'
-import { sha512 } from '@noble/hashes/sha2.js'
+import curve from './ed25519.js'
 
 import { AssertionError, InvalidSignerError, ValueError } from '@tetherto/wdk-wallet'
 
-import { ISignerSolana } from './signer-solana.js'
-
-// To enable @noble's synchronous methods
-curve.hashes.sha512 = sha512
+import {
+  ISignerSolana,
+  SOLANA_DERIVATION_PATH_PREFIX,
+  DEFAULT_ACCOUNT_PATH,
+  assertFullHardenedPath
+} from './signer-solana.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').KeyPair} KeyPair */
 
@@ -41,24 +42,6 @@ curve.hashes.sha512 = sha512
  * @property {string} [path] - The account's path relative to m/44'/501' (default: "0'/0'").
  * @property {boolean} [isChild] - If true, the signer keeps its own account only, not the master key.
  */
-
-const SLIP_0010_SOL_DERIVATION_PATH_PREFIX = "m/44'/501'"
-
-const DEFAULT_ACCOUNT_PATH = "0'/0'"
-
-/**
- * Asserts that every level of a derivation path is hardened, as SLIP-0010 requires for Ed25519.
- *
- * @param {string} path - The derivation path.
- * @throws {ValueError} If a level is not hardened.
- */
-function assertFullHardenedPath (path) {
-  const isValid = path.split('/').reduce((s, e) => s && e.endsWith("'"), true)
-
-  if (!isValid) {
-    throw new ValueError('In Solana, every child path in a derivation path must be hardened.')
-  }
-}
 
 /**
  * A signer on a BIP-39 seed: Ed25519 keys derived with SLIP-0010 at m/44'/501'/<path>. A root signer
@@ -85,21 +68,27 @@ export default class SeedSignerSolana extends ISignerSolana {
       throw new ValueError('Seed or root is required.')
     }
 
-    if (typeof seed === 'string') {
-      if (!bip39.validateMnemonic(seed)) {
-        throw new ValueError('The seed phrase is invalid.')
-      }
-
-      seed = bip39.mnemonicToSeedSync(seed)
-    }
-
     const path = opts.path ?? DEFAULT_ACCOUNT_PATH
 
     assertFullHardenedPath(path)
 
-    const root = opts.root ?? HDKey.fromMasterSeed(seed)
+    let root = opts.root
 
-    const fullPath = `${SLIP_0010_SOL_DERIVATION_PATH_PREFIX}/${path}`
+    if (!root) {
+      if (typeof seed === 'string' && !bip39.validateMnemonic(seed)) {
+        throw new ValueError('The seed phrase is invalid.')
+      }
+
+      const seedBytes = typeof seed === 'string' ? bip39.mnemonicToSeedSync(seed) : seed
+
+      root = HDKey.fromMasterSeed(seedBytes)
+
+      if (seedBytes !== seed) {
+        sodium_memzero(seedBytes)
+      }
+    }
+
+    const fullPath = `${SOLANA_DERIVATION_PATH_PREFIX}/${path}`
 
     const { privateKey } = root.derive(fullPath, true)
 

@@ -24,8 +24,10 @@ import {
 } from '@solana/transactions'
 import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages'
 import { getBase64Decoder } from '@solana/codecs'
+import { getPublicKeyFromAddress } from '@solana/addresses'
+import { verifySignature } from '@solana/keys'
 
-import { AssertionError, MaximumFeeExceededError, ProviderRequiredError, ValueError } from '@tetherto/wdk-wallet'
+import { AssertionError, InvalidSignerError, MaximumFeeExceededError, ProviderRequiredError, ValueError } from '@tetherto/wdk-wallet'
 
 import WalletAccountReadOnlySolana from './wallet-account-read-only-solana.js'
 import SeedSignerSolana from './signers/seed-signer-solana.js'
@@ -127,17 +129,12 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
   }
 
   /**
-   * The derivation path's index of this account.
+   * The derivation path's index of this account, or undefined for a signer not bound to a path.
    *
-   * @type {number}
+   * @type {number | undefined}
    */
   get index () {
-    if (!this.path) {
-      return undefined
-    }
-
-    const segments = this.path.split('/')
-    return +segments[3].replace("'", '')
+    return this.path ? parseInt(this.path.split('/')[3]) : undefined
   }
 
   /**
@@ -146,7 +143,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    * @type {string | null}
    */
   get path () {
-    return this._signer.path ?? null
+    return this._signer.path
   }
 
   /**
@@ -163,25 +160,23 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
   }
 
   /**
-   * The address of this account.
-   *
-   * @returns {Promise<string>} The address.
-   */
-  async getAddress () {
-    return this._address
-  }
-
-  /**
    * Signs a message.
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
    * @throws {AssertionError} If the wallet account has been disposed.
+   * @throws {InvalidSignerError} If the signer's signature does not verify against the account's address.
    */
   async sign (message) {
     this._assertNotDisposed()
 
-    return await this._signer.sign(message)
+    const signature = await this._signer.sign(message)
+
+    if (!(await this.verify(message, signature))) {
+      throw new InvalidSignerError("The signer's message signature does not verify against the account's address.")
+    }
+
+    return signature
   }
 
   /**
@@ -341,7 +336,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
       throw new ValueError(`Transaction fee payer (${staticAccounts[0]}) does not match wallet address (${ownerAddress})`)
     }
 
-    const signature = await this._signer.signTransactionMessage(transaction.messageBytes)
+    const signature = await this._signTransactionMessage(transaction.messageBytes)
     const signedTransaction = Object.freeze({
       ...transaction,
       signatures: Object.freeze({ ...transaction.signatures, [ownerAddress]: signature })
@@ -434,35 +429,56 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    */
   dispose () {
     this._disposed = true
-    this._kitSigner = undefined
     this._signer.dispose()
   }
 
   /**
-   * Returns the account's signer as `@solana/signers` expects it: an address and a function that
-   * signs transactions, each through {@link ISignerSolana#signTransactionMessage} on its message bytes.
-   * Every transaction the account builds is signed through it, alongside any other signer the
-   * transaction carries (a fee payer that is not the account, an extra signing account).
+   * Returns the account's signer as `@solana/signers` expects it, signing each transaction's
+   * message bytes through {@link _signTransactionMessage}.
    *
    * @private
    * @returns {Promise<TransactionPartialSigner>} The signer.
    */
   async _getSigner () {
-    this._assertNotDisposed()
+    this._kitSigner ??= Object.freeze({
+      address: this._address,
+      signTransactions: async (transactions) => {
+        const signatures = []
 
-    if (!this._kitSigner) {
-      const address = this._address
-      const signer = this._signer
+        for (const transaction of transactions) {
+          signatures.push(Object.freeze({ [this._address]: await this._signTransactionMessage(transaction.messageBytes) }))
+        }
 
-      this._kitSigner = Object.freeze({
-        address,
-        signTransactions: (transactions) => Promise.all(transactions.map(async (transaction) =>
-          Object.freeze({ [address]: await signer.signTransactionMessage(transaction.messageBytes) })
-        ))
-      })
-    }
+        return signatures
+      }
+    })
 
     return this._kitSigner
+  }
+
+  /**
+   * Signs a transaction's message bytes with the signer, and checks the signature against the
+   * account's address, so a faulty signer fails here rather than as a rejected transaction.
+   *
+   * @private
+   * @param {Uint8Array} messageBytes - The compiled transaction message.
+   * @returns {Promise<Uint8Array>} The 64-byte signature.
+   * @throws {AssertionError} If the wallet account has been disposed.
+   * @throws {InvalidSignerError} If the signature is not a valid signature of the account.
+   */
+  async _signTransactionMessage (messageBytes) {
+    this._assertNotDisposed()
+
+    const signature = await this._signer.signTransactionMessage(messageBytes)
+
+    const isValid = signature instanceof Uint8Array &&
+      await verifySignature(await getPublicKeyFromAddress(this._address), signature, messageBytes)
+
+    if (!isValid) {
+      throw new InvalidSignerError("The signer's transaction signature does not verify against the account's address.")
+    }
+
+    return signature
   }
 
   /** @private */

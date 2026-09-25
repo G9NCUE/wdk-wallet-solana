@@ -1,18 +1,3 @@
-/**
- * @template TSignedTransaction
- * @typedef {import('@tetherto/wdk-wallet').IWalletAccount<TSignedTransaction>} IWalletAccount
- */
-/** @typedef {import('@tetherto/wdk-wallet').KeyPair} KeyPair */
-/** @typedef {import('@tetherto/wdk-wallet').TransactionResult} TransactionResult */
-/** @typedef {import('@tetherto/wdk-wallet').TransferOptions} TransferOptions */
-/** @typedef {import('@tetherto/wdk-wallet').TransferResult} TransferResult */
-/** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransferOptions} SolanaTransferOptions */
-/** @typedef {import('@solana/errors').SolanaError} SolanaError */
-/** @typedef {import('@solana/signers').TransactionPartialSigner} TransactionPartialSigner */
-/** @typedef {import('./signers/signer-solana.js').ISignerSolana} ISignerSolana */
-/** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransaction} SolanaTransaction */
-/** @typedef {import('./wallet-account-read-only-solana.js').SolanaWalletConfig} SolanaWalletConfig */
-/** @typedef {import('@solana/transactions').FullySignedTransaction} FullySignedTransaction */
 /** @implements {IWalletAccount<FullySignedTransaction>} */
 export default class WalletAccountSolana extends WalletAccountReadOnlySolana implements IWalletAccount<FullySignedTransaction> {
     /**
@@ -61,11 +46,11 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
     /** @private */
     private _disposed;
     /**
-     * The derivation path's index of this account.
+     * The derivation path's index of this account, or undefined for a signer not bound to a path.
      *
-     * @type {number}
+     * @type {number | undefined}
      */
-    get index(): number;
+    get index(): number | undefined;
     /**
      * The derivation path of this account, or null for a signer not bound to a path.
      *
@@ -88,6 +73,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The message's signature.
      * @throws {AssertionError} If the wallet account has been disposed.
+     * @throws {InvalidSignerError} If the signer's signature does not verify against the account's address.
      */
     sign(message: string): Promise<string>;
     /**
@@ -176,15 +162,24 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      */
     dispose(): void;
     /**
-     * Returns the account's signer as `@solana/signers` expects it: an address and a function that
-     * signs transactions, each through {@link ISignerSolana#signTransactionMessage} on its message bytes.
-     * Every transaction the account builds is signed through it, alongside any other signer the
-     * transaction carries (a fee payer that is not the account, an extra signing account).
+     * Returns the account's signer as `@solana/signers` expects it, signing each transaction's
+     * message bytes through {@link _signTransactionMessage}.
      *
      * @private
      * @returns {Promise<TransactionPartialSigner>} The signer.
      */
     private _getSigner;
+    /**
+     * Signs a transaction's message bytes with the signer, and checks the signature against the
+     * account's address, so a faulty signer fails here rather than as a rejected transaction.
+     *
+     * @private
+     * @param {Uint8Array} messageBytes - The compiled transaction message.
+     * @returns {Promise<Uint8Array>} The 64-byte signature.
+     * @throws {AssertionError} If the wallet account has been disposed.
+     * @throws {InvalidSignerError} If the signature is not a valid signature of the account.
+     */
+    private _signTransactionMessage;
     /** @private */
     private _assertNotDisposed;
 }

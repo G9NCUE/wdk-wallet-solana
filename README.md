@@ -54,10 +54,9 @@ wallet.dispose()
 
 ## Signers
 
-The key an account signs with lives in a signer. A seed phrase gives a `SeedSignerSolana` (SLIP-0010,
-`m/44'/501'`), which is what the wallet builds when you pass a seed. Any other key custody implements
-`ISignerSolana` and is passed instead of the seed: the account, its transfers, fees and token accounts
-stay the same, only the signing moves.
+> **Proof of concept, not a proposed implementation.** A personal attempt to split the Solana signer out of the account, to understand what the change involves; see wdk-wallet #52 and wdk-wallet-solana #31 for the actual work.
+
+The key an account signs with lives in a signer. A seed phrase gives a `SeedSignerSolana` (SLIP-0010, `m/44'/501'`), which is what the wallet builds when you pass a seed. Any other key custody implements `ISignerSolana` and is passed instead of the seed: the account, its transfers, fees and token accounts stay the same, only the signing moves.
 
 ```javascript
 import WalletManagerSolana from '@tetherto/wdk-wallet-solana'
@@ -75,17 +74,14 @@ A signer implements:
 
 | Member | |
 |---|---|
-| `isDerivable`, `path`, `address`, `keyPair` | as `ISigner`; `keyPair.privateKey` is `null` when the key never leaves the signer |
+| `isDerivable`, `path`, `address`, `keyPair` | `path` is `null` for a single key; `address` is known once `getAddress()` resolved; `keyPair.privateKey` is `null` when the key never leaves the signer |
 | `derive(relPath)` | a child signer, every level hardened |
 | `getAddress()` | the address; a remote signer may only learn it here |
 | `sign(message)` | an Ed25519 signature over the UTF-8 bytes, hex-encoded |
 | `signTransactionMessage(messageBytes)` | an Ed25519 signature over a transaction's compiled message, 64 bytes |
-| `dispose()` | erases the signer's secret material |
+| `dispose()` | erases the signer's secret material; safe to call twice |
 
-A signer signs message bytes and never builds a transaction, so one transaction can carry several
-signers (a fee payer that is not the account, an extra signing account): each signs the same message
-and its signature joins the transaction's signature map. An account built on a signer needs the
-signer's address; `WalletManagerSolana` resolves it before building the account.
+A signer signs message bytes and never builds a transaction, so one transaction can carry several signers (a fee payer that is not the account, an extra signing account): each signs the same message and its signature joins the transaction's signature map. An account built on a signer needs the signer's address; `WalletManagerSolana` resolves it before building the account. The account checks every signature a signer returns against its address.
 
 ## Compatibility
 

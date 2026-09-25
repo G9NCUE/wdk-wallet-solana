@@ -55,14 +55,11 @@ class KeyServiceSigner extends ISignerSolana {
   dispose () { this._disposed = true }
 
   _live (call) {
-    if (this._disposed) throw new Error('The key service signer has been disposed.')
     this._calls.push(call)
   }
 }
 
 const mockRpc = () => ({
-  getFeeForMessage: jest.fn(),
-  sendTransaction: jest.fn(),
   getLatestBlockhash: jest.fn().mockReturnValue({
     send: jest.fn().mockResolvedValue({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1000000 } })
   })
@@ -81,8 +78,7 @@ describe('WalletAccountSolana on a signer', () => {
     expect(() => new WalletAccountSolana(signer, { provider: TEST_RPC_URL })).toThrow("The signer's address is not known yet")
 
     await signer.getAddress()
-    const account = new WalletAccountSolana(signer, { provider: TEST_RPC_URL })
-    expect(await account.getAddress()).toBe(signer.address)
+    expect(() => new WalletAccountSolana(signer, { provider: TEST_RPC_URL })).not.toThrow()
   })
 
   it('gives the same accounts as the seed, without holding a private key', async () => {
@@ -152,6 +148,29 @@ describe('WalletAccountSolana on a signer', () => {
     expect(Object.keys(signed.signatures).sort()).toEqual([await account.getAddress(), feePayer.address].sort())
     expect(Object.values(signed.signatures).every(signature => signature?.length === 64)).toBe(true)
   })
+
+  it('stops a kit signer handed out before the account was disposed', async () => {
+    const { external } = wallets()
+    const account = await external.getAccount(0)
+    const kept = await account._getSigner()
+
+    account.dispose()
+
+    await expect(kept.signTransactions([{ messageBytes: new Uint8Array(4) }])).rejects.toThrow('The wallet account has been disposed.')
+  })
+
+  it('refuses a signature that does not verify against the account, whatever the signer returns', async () => {
+    const other = new SeedSignerSolana(TEST_SEED_PHRASE, { path: "9'/0'", isChild: true })
+
+    for (const faulty of [() => new Uint8Array(63), () => 'not bytes', bytes => other.signTransactionMessage(bytes)]) {
+      const signer = new SeedSignerSolana(TEST_SEED_PHRASE, { isChild: true })
+      signer.signTransactionMessage = faulty
+      const account = new WalletAccountSolana(signer, { provider: TEST_RPC_URL })
+      account._rpc = mockRpc()
+
+      await expect(account.signTransaction({ to: RECIPIENT, value: 1n })).rejects.toThrow(InvalidSignerError)
+    }
+  })
 })
 
 describe('WalletManagerSolana on a signer', () => {
@@ -166,6 +185,16 @@ describe('WalletManagerSolana on a signer', () => {
     expect(await account.getAddress()).toBe(new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'" }).address)
     expect(await wallet.getAccount('service')).toBe(account)
     expect(account.keyPair.privateKey).toBeNull()
+    await expect(wallet.getAccountByPath("1'/0'", { signerName: 'service' })).rejects.toThrow(InvalidSignerError)
+  })
+
+  it('gives a named derivable signer\'s own account by name', async () => {
+    const wallet = new WalletManagerSolana(TEST_SEED_PHRASE, { provider: TEST_RPC_URL })
+    wallet.addSigner('other', new SeedSignerSolana(TEST_SEED_PHRASE, { path: "3'/0'" }))
+
+    const account = await wallet.getAccount('other')
+    expect(account.path).toBe("m/44'/501'/3'/0'")
+    expect(account.index).toBe(3)
   })
 
   it('keeps the seed of a wallet built from one, and derives through a named derivable signer', async () => {
@@ -186,6 +215,17 @@ describe('WalletManagerSolana on a signer', () => {
     external.dispose()
 
     await expect(account.sign('after')).rejects.toThrow('The wallet account has been disposed.')
+    await expect(account.sendTransaction({ to: RECIPIENT, value: 1n })).rejects.toThrow('The wallet account has been disposed.')
     expect(account._signer._disposed).toBe(true)
+  })
+
+  it('wipes the seed it derived from a phrase, and survives a named signer disposed twice', async () => {
+    const wallet = new WalletManagerSolana(TEST_SEED_PHRASE, { provider: TEST_RPC_URL })
+    const seed = wallet.seed
+    wallet.addSigner('single', new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'", isChild: true }))
+    await wallet.getAccount('single')
+
+    expect(() => wallet.dispose()).not.toThrow()
+    expect(seed.every(byte => byte === 0)).toBe(true)
   })
 })

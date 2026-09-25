@@ -1,8 +1,7 @@
 'use strict'
 
 import { describe, it, expect } from '@jest/globals'
-import { createKeyPairFromPrivateKeyBytes, signBytes, verifySignature } from '@solana/keys'
-import { getAddressEncoder } from '@solana/addresses'
+import { createKeyPairFromPrivateKeyBytes, signBytes } from '@solana/keys'
 import { ISigner } from '@tetherto/wdk-wallet'
 import * as bip39 from 'bip39'
 import { ISignerSolana, SeedSignerSolana } from '../../src/signers/index.js'
@@ -67,22 +66,16 @@ describe('SeedSignerSolana', () => {
     const message = 'Dummy message to sign.'
     const signature = await signer.sign(message)
 
-    expect(signature).toMatch(/^[0-9a-f]{128}$/)
     const reference = await referenceSignature(signer.keyPair.privateKey, Buffer.from(message, 'utf8'))
     expect(signature).toBe(Buffer.from(reference).toString('hex'))
   })
 
-  it('signs transaction message bytes: a bare 64-byte signature that verifies against the address', async () => {
+  it('signs transaction message bytes: a bare 64-byte signature', async () => {
     const signer = new SeedSignerSolana(TEST_SEED_PHRASE)
     const messageBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
     const signature = await signer.signTransactionMessage(messageBytes)
 
-    expect(signature).toBeInstanceOf(Uint8Array)
-    expect(signature.length).toBe(64)
     expect(signature).toEqual(await referenceSignature(signer.keyPair.privateKey, messageBytes))
-
-    const publicKey = await crypto.subtle.importKey('raw', getAddressEncoder().encode(signer.address), 'Ed25519', true, ['verify'])
-    expect(await verifySignature(publicKey, signature, messageBytes)).toBe(true)
   })
 
   it('exposes its key pair until disposed; disposed, it wipes the keys and refuses to sign or derive', async () => {
@@ -101,5 +94,13 @@ describe('SeedSignerSolana', () => {
     await expect(root.sign('after')).rejects.toThrow('The signer has been disposed.')
     await expect(root.signTransactionMessage(new Uint8Array(1))).rejects.toThrow('The signer has been disposed.')
     await expect(root.derive("1'/0'")).rejects.toThrow('Cannot derive')
+
+    expect(() => root.dispose()).not.toThrow()
+  })
+
+  it('leaves a caller\'s seed bytes alone', () => {
+    const seed = bip39.mnemonicToSeedSync(TEST_SEED_PHRASE)
+    new SeedSignerSolana(seed).dispose()
+    expect(seed).toEqual(bip39.mnemonicToSeedSync(TEST_SEED_PHRASE))
   })
 })

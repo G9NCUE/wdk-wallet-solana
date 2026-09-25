@@ -10,6 +10,8 @@ export default class WalletManagerSolana extends WalletManager {
      * @throws {InvalidSignerError} If the default signer doesn't support account derivation.
      */
     constructor(seedOrSigner: string | Uint8Array | ISignerSolana, config?: SolanaWalletConfig);
+    /** @private */
+    private _ownsSeed;
     /**
      * A Solana RPC client for HTTP requests.
      *
@@ -59,13 +61,13 @@ export default class WalletManagerSolana extends WalletManager {
      * @param {Object} [options] - Account options.
      * @param {string} [options.signerName] - The signer name, when not the default signer.
      * @returns {Promise<WalletAccountSolana>} The account.
+     * @throws {InvalidSignerError} If the signer cannot derive accounts.
      */
     getAccountByPath(path: string, options?: {
         signerName?: string;
     }): Promise<WalletAccountSolana>;
     /**
-     * Builds the account of a signer, its address resolved first (a remote signer learns it on the
-     * first call).
+     * Builds the account of a signer, its address resolved first.
      *
      * @private
      * @param {ISignerSolana} signer - The signer.

@@ -16,6 +16,9 @@
 
 import WalletManager, { InvalidSignerError, ProviderRequiredError } from '@tetherto/wdk-wallet'
 
+// eslint-disable-next-line camelcase
+import { sodium_memzero } from 'sodium-universal'
+
 import WalletAccountSolana from './wallet-account-solana.js'
 import SeedSignerSolana from './signers/seed-signer-solana.js'
 
@@ -55,14 +58,11 @@ export default class WalletManagerSolana extends WalletManager {
     super(seedOrSigner, config)
 
     if (fromSeed) {
-      /**
-       * The default signer: a seed signer on the wallet's seed, which keeps the master key.
-       *
-       * @protected
-       * @type {ISignerSolana}
-       */
       this._defaultSigner = new SeedSignerSolana(this.seed)
     }
+
+    /** @private */
+    this._ownsSeed = typeof seedOrSigner === 'string'
 
     /**
      * The solana wallet configuration.
@@ -144,6 +144,7 @@ export default class WalletManagerSolana extends WalletManager {
    * @param {Object} [options] - Account options.
    * @param {string} [options.signerName] - The signer name, when not the default signer.
    * @returns {Promise<WalletAccountSolana>} The account.
+   * @throws {InvalidSignerError} If the signer cannot derive accounts.
    */
   async getAccountByPath (path, options = {}) {
     const { signerName } = options
@@ -152,6 +153,10 @@ export default class WalletManagerSolana extends WalletManager {
     if (!this._accounts[key]) {
       const signer = this.getSigner(signerName)
 
+      if (!signer.isDerivable) {
+        throw new InvalidSignerError(`The signer "${signerName}" cannot derive accounts: use getAccount("${signerName}").`)
+      }
+
       this._accounts[key] = await this._accountOf(await signer.derive(path))
     }
 
@@ -159,21 +164,24 @@ export default class WalletManagerSolana extends WalletManager {
   }
 
   /**
-   * Disposes the wallet manager: every account it created, then its signers.
+   * Disposes the wallet manager: every account it created, its signers, and the seed it derived from
+   * a seed phrase.
    */
   dispose () {
-    // the base class disposes only the accounts that expose a private key; an account on a signer
-    // that keeps its key elsewhere must be disposed too, or it keeps signing
+    // the base class skips accounts without a private key (tetherto/wdk-wallet#73)
     for (const account of Object.values(this._accounts)) {
       account.dispose()
+    }
+
+    if (this._ownsSeed) {
+      sodium_memzero(this._seed)
     }
 
     super.dispose()
   }
 
   /**
-   * Builds the account of a signer, its address resolved first (a remote signer learns it on the
-   * first call).
+   * Builds the account of a signer, its address resolved first.
    *
    * @private
    * @param {ISignerSolana} signer - The signer.

@@ -1,4 +1,12 @@
-/** @typedef {import('@tetherto/wdk-wallet').KeyPair} KeyPair */
+export const SOLANA_DERIVATION_PATH_PREFIX: "m/44'/501'";
+export const DEFAULT_ACCOUNT_PATH: "0'/0'";
+/**
+ * Asserts that every level of a derivation path is hardened, as SLIP-0010 requires for Ed25519.
+ *
+ * @param {string} path - The derivation path.
+ * @throws {ValueError} If a level is not hardened.
+ */
+export function assertFullHardenedPath(path: string): void;
 /**
  * The Solana signer interface: whatever holds an account's Ed25519 key, a seed in memory, a hardware
  * device or a remote key service, behind the same calls.
@@ -20,7 +28,7 @@ export class ISignerSolana extends ISigner {
     get isDerivable(): boolean;
     /**
      * The full SLIP-0010 derivation path of the signer's account (e.g. "m/44'/501'/0'/0'"), or null
-     * for a signer not bound to a path (e.g. a private-key signer).
+     * for a signer not bound to a path (e.g. a private-key signer). A derivable signer has one.
      *
      * @type {string | null}
      */
