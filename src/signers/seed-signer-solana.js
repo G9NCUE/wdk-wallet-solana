@@ -148,15 +148,6 @@ export default class SeedSignerSolana extends ISignerSolana {
   }
 
   /**
-   * The signer's address.
-   *
-   * @type {string}
-   */
-  get address () {
-    return this._address
-  }
-
-  /**
    * The signer's key pair. The private key is null once the signer has been disposed.
    *
    * The uint8 arrays are bound to the signer, so any external change will reflect to the internal

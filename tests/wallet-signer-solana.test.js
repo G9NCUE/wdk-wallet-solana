@@ -13,6 +13,7 @@ import {
 import { getTransferSolInstruction } from '@solana-program/system'
 import { getBase64EncodedWireTransaction } from '@solana/transactions'
 import { InvalidSignerError } from '@tetherto/wdk-wallet'
+import * as bip39 from 'bip39'
 import WalletManagerSolana from '../src/wallet-manager-solana.js'
 import WalletAccountSolana from '../src/wallet-account-solana.js'
 import { ISignerSolana, SeedSignerSolana } from '../src/signers/index.js'
@@ -23,8 +24,8 @@ const BLOCKHASH = '6JbYxigC1rn83PMHZait5FHHpC3YqUMacnVJWFwfoayQ'
 const RECIPIENT = '9CXtfmGEtfjmtPKnq2QZcRzCiMzE9T8NQfRicJZetvk2'
 
 // A signer that keeps its key to itself, as a key service or a device does: no private key in its key
-// pair, and an address it only learns on the first getAddress(). The keys are the seed's, so its
-// accounts can be compared with the seed accounts byte for byte.
+// pair, and a public key (hence an address) it only learns on the first getAddress(). The keys are the
+// seed's, so its accounts can be compared with the seed accounts byte for byte.
 class KeyServiceSigner extends ISignerSolana {
   constructor (inner, calls = []) {
     super()
@@ -36,11 +37,15 @@ class KeyServiceSigner extends ISignerSolana {
 
   get isDerivable () { return this._inner.isDerivable }
   get path () { return this._inner.path }
-  get address () { return this._resolved ? this._inner.address : undefined }
-  get keyPair () { return { privateKey: null, publicKey: this._inner.keyPair.publicKey } }
+  get keyPair () { return { privateKey: null, publicKey: this._resolved ? this._inner.keyPair.publicKey : null } }
 
   async derive (relPath) { return new KeyServiceSigner(await this._inner.derive(relPath), this._calls) }
-  async getAddress () { this._resolved = true; return this._inner.address }
+
+  async getAddress () {
+    this._calls.push('getAddress')
+    this._resolved = true
+    return this._inner.getAddress()
+  }
 
   async sign (message) {
     this._live('sign')
@@ -73,12 +78,21 @@ function wallets () {
 }
 
 describe('WalletAccountSolana on a signer', () => {
-  it('refuses a signer whose address is not resolved yet', async () => {
-    const signer = new KeyServiceSigner(new SeedSignerSolana(TEST_SEED_PHRASE, { path: "0'/0'", isChild: true }))
-    expect(() => new WalletAccountSolana(signer, { provider: TEST_RPC_URL })).toThrow("The signer's address is not known yet")
+  it('asks a signer that learns its address late once, on the first getAddress()', async () => {
+    const calls = []
+    const signer = new KeyServiceSigner(new SeedSignerSolana(TEST_SEED_PHRASE, { isChild: true }), calls)
+    const account = new WalletAccountSolana(signer, { provider: TEST_RPC_URL })
 
-    await signer.getAddress()
-    expect(() => new WalletAccountSolana(signer, { provider: TEST_RPC_URL })).not.toThrow()
+    expect(calls).toEqual([])
+    expect(await account.getAddress()).toBe(await new SeedSignerSolana(TEST_SEED_PHRASE).getAddress())
+    await account.getAddress()
+    expect(calls).toEqual(['getAddress'])
+  })
+
+  it('knows the address of a local key at construction (gasless and Squads read it synchronously)', async () => {
+    const account = new WalletAccountSolana(TEST_SEED_PHRASE, "0'/0'", { provider: TEST_RPC_URL })
+
+    expect(account._address).toBe(await new SeedSignerSolana(TEST_SEED_PHRASE).getAddress())
   })
 
   it('gives the same accounts as the seed, without holding a private key', async () => {
@@ -88,7 +102,6 @@ describe('WalletAccountSolana on a signer', () => {
       const [a, b] = [await external.getAccount(index), await seed.getAccount(index)]
       expect(await a.getAddress()).toBe(await b.getAddress())
       expect(a.path).toBe(b.path)
-      expect(a.index).toBe(index)
       expect(a.keyPair.privateKey).toBeNull()
       expect(a.keyPair.publicKey).toEqual(b.keyPair.publicKey)
     }
@@ -101,7 +114,7 @@ describe('WalletAccountSolana on a signer', () => {
 
     expect(signature).toBe(await b.sign('Dummy message to sign.'))
     expect(await a.verify('Dummy message to sign.', signature)).toBe(true)
-    expect(calls).toEqual(['sign'])
+    expect(calls).toEqual(['getAddress', 'sign'])
   })
 
   it('signs a transaction through the signer: byte-identical to the seed account', async () => {
@@ -114,7 +127,7 @@ describe('WalletAccountSolana on a signer', () => {
     const [signedA, signedB] = [await a.signTransaction(tx), await b.signTransaction(tx)]
 
     expect(getBase64EncodedWireTransaction(signedA)).toBe(getBase64EncodedWireTransaction(signedB))
-    expect(calls).toEqual(['signTransactionMessage'])
+    expect(calls).toEqual(['getAddress', 'signTransactionMessage'])
   })
 
   it('signs a serialized transaction built elsewhere, the account as fee payer', async () => {
@@ -147,6 +160,17 @@ describe('WalletAccountSolana on a signer', () => {
 
     expect(Object.keys(signed.signatures).sort()).toEqual([await account.getAddress(), feePayer.address].sort())
     expect(Object.values(signed.signatures).every(signature => signature?.length === 64)).toBe(true)
+  })
+
+  it('leaves a signer it was given to its owner, unless told to dispose it', async () => {
+    const kept = new SeedSignerSolana(TEST_SEED_PHRASE, { isChild: true })
+    const wiped = new SeedSignerSolana(TEST_SEED_PHRASE, { isChild: true })
+
+    new WalletAccountSolana(kept, { provider: TEST_RPC_URL }).dispose()
+    new WalletAccountSolana(wiped, { provider: TEST_RPC_URL, shouldWipeSignerOnDisposal: true }).dispose()
+
+    expect(kept.keyPair.privateKey).not.toBeNull()
+    expect(wiped.keyPair.privateKey).toBeNull()
   })
 
   it('stops a kit signer handed out before the account was disposed', async () => {
@@ -182,7 +206,7 @@ describe('WalletManagerSolana on a signer', () => {
     wallet.addSigner('service', single)
     const account = await wallet.getAccount('service')
 
-    expect(await account.getAddress()).toBe(new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'" }).address)
+    expect(await account.getAddress()).toBe(await new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'" }).getAddress())
     expect(await wallet.getAccount('service')).toBe(account)
     expect(account.keyPair.privateKey).toBeNull()
     await expect(wallet.getAccountByPath("1'/0'", { signerName: 'service' })).rejects.toThrow(InvalidSignerError)
@@ -194,12 +218,10 @@ describe('WalletManagerSolana on a signer', () => {
 
     const account = await wallet.getAccount('other')
     expect(account.path).toBe("m/44'/501'/3'/0'")
-    expect(account.index).toBe(3)
   })
 
-  it('keeps the seed of a wallet built from one, and derives through a named derivable signer', async () => {
+  it('derives through a named derivable signer', async () => {
     const wallet = new WalletManagerSolana(TEST_SEED_PHRASE, { provider: TEST_RPC_URL })
-    expect(wallet.seed).toBeInstanceOf(Uint8Array)
 
     wallet.addSigner('other', new KeyServiceSigner(new SeedSignerSolana(TEST_SEED_PHRASE)))
     const named = await wallet.getAccountByPath("2'/0'", { signerName: 'other' })
@@ -219,13 +241,34 @@ describe('WalletManagerSolana on a signer', () => {
     expect(account._signer._disposed).toBe(true)
   })
 
-  it('wipes the seed it derived from a phrase, and survives a named signer disposed twice', async () => {
-    const wallet = new WalletManagerSolana(TEST_SEED_PHRASE, { provider: TEST_RPC_URL })
-    const seed = wallet.seed
+  it('disposes only what it created: the seed signer and the accounts it derived, never a signer given to it', async () => {
+    const root = new KeyServiceSigner(new SeedSignerSolana(TEST_SEED_PHRASE))
+    const single = new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'", isChild: true })
+    const given = new WalletManagerSolana(root, { provider: TEST_RPC_URL })
+    given.addSigner('single', single)
+    const [derived, named] = [await given.getAccount(0), await given.getAccount('single')]
+
+    given.dispose()
+
+    expect(derived._signer._disposed).toBe(true)
+    expect(root._disposed).toBe(false)
+    await expect(named.sign('after')).rejects.toThrow('The wallet account has been disposed.')
+    expect(single.keyPair.privateKey).not.toBeNull()
+
+    const built = new WalletManagerSolana(TEST_SEED_PHRASE, { provider: TEST_RPC_URL })
+    built.dispose()
+    await expect(built.getAccount(0)).rejects.toThrow('The default signer cannot derive accounts (it may have been disposed).')
+  })
+
+  it('keeps no seed: it wraps the seed in a signer, and leaves a caller\'s seed bytes alone', async () => {
+    const seed = bip39.mnemonicToSeedSync(TEST_SEED_PHRASE)
+    const wallet = new WalletManagerSolana(seed, { provider: TEST_RPC_URL })
+    expect(wallet.seed).toBeUndefined()
+
     wallet.addSigner('single', new SeedSignerSolana(TEST_SEED_PHRASE, { path: "5'/0'", isChild: true }))
     await wallet.getAccount('single')
 
     expect(() => wallet.dispose()).not.toThrow()
-    expect(seed.every(byte => byte === 0)).toBe(true)
+    expect(seed).toEqual(bip39.mnemonicToSeedSync(TEST_SEED_PHRASE))
   })
 })

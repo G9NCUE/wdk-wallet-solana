@@ -24,11 +24,11 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      * Creates a new solana wallet account using a signer.
      *
      * @overload
-     * @param {ISignerSolana} signer - A signer implementing the Solana signer interface, its address resolved.
-     * @param {SolanaWalletConfig} [config] - The configuration object.
-     * @throws {ValueError} If the signer's address is not known yet (await `signer.getAddress()` first).
+     * @param {ISignerSolana} signer - A signer implementing the Solana signer interface. The account
+     * never disposes it unless told to: the signer stays the caller's.
+     * @param {SolanaWalletConfig & SignerOptions} [config] - The configuration object.
      */
-    constructor(signer: ISignerSolana, config?: SolanaWalletConfig);
+    constructor(signer: ISignerSolana, config?: SolanaWalletConfig & SignerOptions);
     /**
      * The signer holding the account's key.
      *
@@ -36,6 +36,14 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      * @type {ISignerSolana}
      */
     private _signer;
+    /**
+     * If true, disposes the signer when the account is disposed: a signer the account built from a
+     * seed, or one it was told to own.
+     *
+     * @private
+     * @type {boolean}
+     */
+    private _shouldWipeSignerOnDisposal;
     /**
      * The signer as `@solana/signers` sees it, built on first use.
      *
@@ -45,12 +53,6 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
     private _kitSigner;
     /** @private */
     private _disposed;
-    /**
-     * The derivation path's index of this account, or undefined for a signer not bound to a path.
-     *
-     * @type {number | undefined}
-     */
-    get index(): number | undefined;
     /**
      * The derivation path of this account, or null for a signer not bound to a path.
      *
@@ -67,6 +69,13 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
      * @type {KeyPair}
      */
     get keyPair(): KeyPair;
+    /**
+     * Returns the account's address, asking the signer the first time if it was not known at
+     * construction (e.g. a hardware signer).
+     *
+     * @returns {Promise<string>} The address.
+     */
+    getAddress(): Promise<string>;
     /**
      * Signs a message.
      *
@@ -158,7 +167,8 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana imp
     toReadOnlyAccount(): Promise<WalletAccountReadOnlySolana>;
     _solanaReadOnlyAccount: WalletAccountReadOnlySolana;
     /**
-     * Disposes the wallet account and its signer, erasing the private key from the memory.
+     * Disposes the wallet account: it refuses to sign from then on, and it disposes its signer if it
+     * owns it (see {@link SignerOptions}).
      */
     dispose(): void;
     /**
@@ -195,4 +205,10 @@ export type ISignerSolana = import("./signers/signer-solana.js").ISignerSolana;
 export type SolanaTransaction = import("./wallet-account-read-only-solana.js").SolanaTransaction;
 export type SolanaWalletConfig = import("./wallet-account-read-only-solana.js").SolanaWalletConfig;
 export type FullySignedTransaction = import("@solana/transactions").FullySignedTransaction;
+export type SignerOptions = {
+    /**
+     * - If true, disposes the signer given at construction when the account is disposed.
+     */
+    shouldWipeSignerOnDisposal?: boolean;
+};
 import WalletAccountReadOnlySolana from "./wallet-account-read-only-solana.js";

@@ -2,16 +2,24 @@ export default class WalletManagerSolana extends WalletManager {
     /**
      * Creates a new wallet manager for the solana blockchain.
      *
-     * Accepts a seed, as before, or a root signer. The default signer must be derivable; a signer that
-     * cannot derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
+     * Accepts a seed, as before, or a root signer. A seed is wrapped in a seed signer and not kept by
+     * the manager (`seed` is undefined). The default signer must be derivable; a signer that cannot
+     * derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
      *
      * @param {string | Uint8Array | ISignerSolana} seedOrSigner - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, a raw BIP-32 master seed (16-64 bytes), or a derivable root signer.
      * @param {SolanaWalletConfig} [config] - The configuration object.
+     * @throws {ValueError} If the seed phrase is invalid.
      * @throws {InvalidSignerError} If the default signer doesn't support account derivation.
      */
     constructor(seedOrSigner: string | Uint8Array | ISignerSolana, config?: SolanaWalletConfig);
-    /** @private */
-    private _ownsSeed;
+    /**
+     * If true, disposes the default signer when the manager is disposed: only a seed signer the
+     * manager built itself. A signer you pass in, as default or by name, stays yours to dispose.
+     *
+     * @private
+     * @type {boolean}
+     */
+    private _shouldWipeDefaultSignerOnDisposal;
     /**
      * A Solana RPC client for HTTP requests.
      *
@@ -67,10 +75,11 @@ export default class WalletManagerSolana extends WalletManager {
         signerName?: string;
     }): Promise<WalletAccountSolana>;
     /**
-     * Builds the account of a signer, its address resolved first.
+     * Builds the account of a signer, its address resolved (a remote signer is asked once, here).
      *
      * @private
      * @param {ISignerSolana} signer - The signer.
+     * @param {boolean} shouldWipeSignerOnDisposal - Whether the account owns the signer (one the manager derived).
      * @returns {Promise<WalletAccountSolana>} The account.
      */
     private _accountOf;

@@ -57,7 +57,6 @@ describe('WalletManagerSolana', () => {
     it('should return account at index 0', async () => {
       const account = await wallet.getAccount(0)
       expect(account).toBeInstanceOf(WalletAccountSolana)
-      expect(account.index).toBe(0)
       expect(account.path).toBe("m/44'/501'/0'/0'")
     })
 
@@ -70,7 +69,6 @@ describe('WalletManagerSolana', () => {
 
     it('should handle large index numbers', async () => {
       const account = await wallet.getAccount(999)
-      expect(account.index).toBe(999)
       expect(account.path).toBe("m/44'/501'/999'/0'")
     })
   })
