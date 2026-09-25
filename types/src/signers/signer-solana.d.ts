@@ -34,15 +34,9 @@ export class ISignerSolana extends ISigner {
      */
     get path(): string | null;
     /**
-     * The signer's address, once known. Local signers know it at construction; a remote signer knows
-     * it after the first {@link getAddress}.
-     *
-     * @type {string | undefined}
-     */
-    get address(): string | undefined;
-    /**
      * The signer's key pair. The private key is null for a signer that cannot expose it (a hardware
-     * device, a key service) and once the signer has been disposed.
+     * device, a key service) and once the signer has been disposed; the public key is null until known
+     * (a remote signer learns it on the first {@link getAddress}).
      *
      * @type {KeyPair}
      */

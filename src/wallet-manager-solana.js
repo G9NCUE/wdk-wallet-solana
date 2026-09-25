@@ -16,9 +16,6 @@
 
 import WalletManager, { InvalidSignerError, ProviderRequiredError } from '@tetherto/wdk-wallet'
 
-// eslint-disable-next-line camelcase
-import { sodium_memzero } from 'sodium-universal'
-
 import WalletAccountSolana from './wallet-account-solana.js'
 import SeedSignerSolana from './signers/seed-signer-solana.js'
 
@@ -41,28 +38,34 @@ export default class WalletManagerSolana extends WalletManager {
   /**
    * Creates a new wallet manager for the solana blockchain.
    *
-   * Accepts a seed, as before, or a root signer. The default signer must be derivable; a signer that
-   * cannot derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
+   * Accepts a seed, as before, or a root signer. A seed is wrapped in a seed signer and not kept by
+   * the manager (`seed` is undefined). The default signer must be derivable; a signer that cannot
+   * derive (e.g. a single-key signer) is registered by name with {@link addSigner}.
    *
    * @param {string | Uint8Array | ISignerSolana} seedOrSigner - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, a raw BIP-32 master seed (16-64 bytes), or a derivable root signer.
    * @param {SolanaWalletConfig} [config] - The configuration object.
+   * @throws {ValueError} If the seed phrase is invalid.
    * @throws {InvalidSignerError} If the default signer doesn't support account derivation.
    */
   constructor (seedOrSigner, config = {}) {
     const fromSeed = typeof seedOrSigner === 'string' || seedOrSigner instanceof Uint8Array
 
-    if (!fromSeed && !seedOrSigner?.isDerivable) {
+    const signer = fromSeed ? new SeedSignerSolana(seedOrSigner) : seedOrSigner
+
+    if (!signer?.isDerivable) {
       throw new InvalidSignerError('The default signer must be derivable. Non-derivable signers (e.g. private-key signers) can only be registered by name via addSigner.')
     }
 
-    super(seedOrSigner, config)
+    super(signer, config)
 
-    if (fromSeed) {
-      this._defaultSigner = new SeedSignerSolana(this.seed)
-    }
-
-    /** @private */
-    this._ownsSeed = typeof seedOrSigner === 'string'
+    /**
+     * If true, disposes the default signer when the manager is disposed: only a seed signer the
+     * manager built itself. A signer you pass in, as default or by name, stays yours to dispose.
+     *
+     * @private
+     * @type {boolean}
+     */
+    this._shouldWipeDefaultSignerOnDisposal = fromSeed
 
     /**
      * The solana wallet configuration.
@@ -121,11 +124,10 @@ export default class WalletManagerSolana extends WalletManager {
 
       if (!this._accounts[key]) {
         const signer = this.getSigner(indexOrSignerName)
-        const accountSigner = signer.isDerivable
-          ? await signer.derive(signer.path.split('/').slice(3).join('/'))
-          : signer
 
-        this._accounts[key] = await this._accountOf(accountSigner)
+        this._accounts[key] = signer.isDerivable
+          ? await this._accountOf(await signer.derive(signer.path.split('/').slice(3).join('/')), true)
+          : await this._accountOf(signer, false)
       }
 
       return this._accounts[key]
@@ -154,43 +156,50 @@ export default class WalletManagerSolana extends WalletManager {
       const signer = this.getSigner(signerName)
 
       if (!signer.isDerivable) {
-        throw new InvalidSignerError(`The signer "${signerName}" cannot derive accounts: use getAccount("${signerName}").`)
+        throw new InvalidSignerError(signerName === undefined
+          ? 'The default signer cannot derive accounts (it may have been disposed).'
+          : `The signer "${signerName}" cannot derive accounts: use getAccount("${signerName}").`)
       }
 
-      this._accounts[key] = await this._accountOf(await signer.derive(path))
+      this._accounts[key] = await this._accountOf(await signer.derive(path), true)
     }
 
     return this._accounts[key]
   }
 
   /**
-   * Disposes the wallet manager: every account it created, its signers, and the seed it derived from
-   * a seed phrase.
+   * Disposes the wallet manager: every account it created (each disposes the signer it derived),
+   * and the default signer if the manager built it from a seed. Signers you passed in, as default or
+   * by name, are left to you.
    */
   dispose () {
-    // the base class skips accounts without a private key (tetherto/wdk-wallet#73)
+    // not super.dispose(): the base skips accounts without a private key (tetherto/wdk-wallet#73) and,
+    // before wdk-wallet#52, disposes every signer, including the ones it was given
     for (const account of Object.values(this._accounts)) {
       account.dispose()
     }
 
-    if (this._ownsSeed) {
-      sodium_memzero(this._seed)
+    if (this._shouldWipeDefaultSignerOnDisposal) {
+      this._defaultSigner.dispose()
     }
 
-    super.dispose()
+    this._accounts = {}
   }
 
   /**
-   * Builds the account of a signer, its address resolved first.
+   * Builds the account of a signer, its address resolved (a remote signer is asked once, here).
    *
    * @private
    * @param {ISignerSolana} signer - The signer.
+   * @param {boolean} shouldWipeSignerOnDisposal - Whether the account owns the signer (one the manager derived).
    * @returns {Promise<WalletAccountSolana>} The account.
    */
-  async _accountOf (signer) {
-    await signer.getAddress()
+  async _accountOf (signer, shouldWipeSignerOnDisposal) {
+    const account = new WalletAccountSolana(signer, { ...this._accountConfig(), shouldWipeSignerOnDisposal })
 
-    return new WalletAccountSolana(signer, this._accountConfig())
+    await account.getAddress()
+
+    return account
   }
 
   /**

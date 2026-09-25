@@ -74,14 +74,14 @@ A signer implements:
 
 | Member | |
 |---|---|
-| `isDerivable`, `path`, `address`, `keyPair` | `path` is `null` for a single key; `address` is known once `getAddress()` resolved; `keyPair.privateKey` is `null` when the key never leaves the signer |
+| `isDerivable`, `path`, `keyPair` | `path` is `null` for a single key; `keyPair.privateKey` is `null` when the key never leaves the signer, `keyPair.publicKey` until `getAddress()` resolved it |
 | `derive(relPath)` | a child signer, every level hardened |
 | `getAddress()` | the address; a remote signer may only learn it here |
 | `sign(message)` | an Ed25519 signature over the UTF-8 bytes, hex-encoded |
 | `signTransactionMessage(messageBytes)` | an Ed25519 signature over a transaction's compiled message, 64 bytes |
 | `dispose()` | erases the signer's secret material; safe to call twice |
 
-A signer signs message bytes and never builds a transaction, so one transaction can carry several signers (a fee payer that is not the account, an extra signing account): each signs the same message and its signature joins the transaction's signature map. An account built on a signer needs the signer's address; `WalletManagerSolana` resolves it before building the account. The account checks every signature a signer returns against its address.
+A signer signs message bytes and never builds a transaction, so one transaction can carry several signers (a fee payer that is not the account, an extra signing account): each signs the same message and its signature joins the transaction's signature map. An account asks its signer for the address on the first `getAddress()` (a local key knows it at once); accounts have no `index` (the `path` is the position), and the manager keeps no `seed`: it wraps a seed in a `SeedSignerSolana`. Disposal follows ownership: the manager disposes the seed signer it built and the accounts it derived, never a signer you passed in (as default or by name), which stays yours to dispose. The account checks every signature a signer returns against its address.
 
 ## Compatibility
 

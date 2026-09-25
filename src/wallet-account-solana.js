@@ -24,7 +24,7 @@ import {
 } from '@solana/transactions'
 import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages'
 import { getBase64Decoder } from '@solana/codecs'
-import { getPublicKeyFromAddress } from '@solana/addresses'
+import { getAddressDecoder, getPublicKeyFromAddress } from '@solana/addresses'
 import { verifySignature } from '@solana/keys'
 
 import { AssertionError, InvalidSignerError, MaximumFeeExceededError, ProviderRequiredError, ValueError } from '@tetherto/wdk-wallet'
@@ -51,6 +51,11 @@ import SeedSignerSolana from './signers/seed-signer-solana.js'
 /** @typedef {import('./wallet-account-read-only-solana.js').SolanaTransaction} SolanaTransaction */
 /** @typedef {import('./wallet-account-read-only-solana.js').SolanaWalletConfig} SolanaWalletConfig */
 
+/**
+ * @typedef {Object} SignerOptions
+ * @property {boolean} [shouldWipeSignerOnDisposal] - If true, disposes the signer given at construction when the account is disposed.
+ */
+
 /** @typedef {import('@solana/transactions').FullySignedTransaction} FullySignedTransaction */
 
 /** @implements {IWalletAccount<FullySignedTransaction>} */
@@ -69,9 +74,9 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    * Creates a new solana wallet account using a signer.
    *
    * @overload
-   * @param {ISignerSolana} signer - A signer implementing the Solana signer interface, its address resolved.
-   * @param {SolanaWalletConfig} [config] - The configuration object.
-   * @throws {ValueError} If the signer's address is not known yet (await `signer.getAddress()` first).
+   * @param {ISignerSolana} signer - A signer implementing the Solana signer interface. The account
+   * never disposes it unless told to: the signer stays the caller's.
+   * @param {SolanaWalletConfig & SignerOptions} [config] - The configuration object.
    */
 
   constructor (seedOrSigner, pathOrConfig = {}, config = {}) {
@@ -81,11 +86,11 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
       ? [new SeedSignerSolana(seedOrSigner, { path: pathOrConfig, isChild: true }), config]
       : [seedOrSigner, pathOrConfig]
 
-    if (!signer.address) {
-      throw new ValueError("The signer's address is not known yet: resolve it first (await signer.getAddress()).")
-    }
+    // on Solana the public key is the address: known at once for a local key, on the first
+    // getAddress() for a remote or hardware signer
+    const { publicKey } = signer.keyPair
 
-    super(signer.address, configuration)
+    super(publicKey ? getAddressDecoder().decode(publicKey) : undefined, configuration)
 
     /**
      * The wallet account configuration.
@@ -102,6 +107,15 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
      * @type {ISignerSolana}
      */
     this._signer = signer
+
+    /**
+     * If true, disposes the signer when the account is disposed: a signer the account built from a
+     * seed, or one it was told to own.
+     *
+     * @private
+     * @type {boolean}
+     */
+    this._shouldWipeSignerOnDisposal = fromSeed || Boolean(configuration.shouldWipeSignerOnDisposal)
 
     /**
      * The signer as `@solana/signers` sees it, built on first use.
@@ -129,15 +143,6 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
   }
 
   /**
-   * The derivation path's index of this account, or undefined for a signer not bound to a path.
-   *
-   * @type {number | undefined}
-   */
-  get index () {
-    return this.path ? parseInt(this.path.split('/')[3]) : undefined
-  }
-
-  /**
    * The derivation path of this account, or null for a signer not bound to a path.
    *
    * @type {string | null}
@@ -157,6 +162,20 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    */
   get keyPair () {
     return this._signer.keyPair
+  }
+
+  /**
+   * Returns the account's address, asking the signer the first time if it was not known at
+   * construction (e.g. a hardware signer).
+   *
+   * @returns {Promise<string>} The address.
+   */
+  async getAddress () {
+    if (!this._address) {
+      this.__address = await this._signer.getAddress()
+    }
+
+    return this._address
   }
 
   /**
@@ -425,11 +444,15 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
   }
 
   /**
-   * Disposes the wallet account and its signer, erasing the private key from the memory.
+   * Disposes the wallet account: it refuses to sign from then on, and it disposes its signer if it
+   * owns it (see {@link SignerOptions}).
    */
   dispose () {
     this._disposed = true
-    this._signer.dispose()
+
+    if (this._shouldWipeSignerOnDisposal) {
+      this._signer.dispose()
+    }
   }
 
   /**
@@ -440,13 +463,15 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
    * @returns {Promise<TransactionPartialSigner>} The signer.
    */
   async _getSigner () {
+    const address = await this.getAddress()
+
     this._kitSigner ??= Object.freeze({
-      address: this._address,
+      address,
       signTransactions: async (transactions) => {
         const signatures = []
 
         for (const transaction of transactions) {
-          signatures.push(Object.freeze({ [this._address]: await this._signTransactionMessage(transaction.messageBytes) }))
+          signatures.push(Object.freeze({ [address]: await this._signTransactionMessage(transaction.messageBytes) }))
         }
 
         return signatures
@@ -472,7 +497,7 @@ export default class WalletAccountSolana extends WalletAccountReadOnlySolana {
     const signature = await this._signer.signTransactionMessage(messageBytes)
 
     const isValid = signature instanceof Uint8Array &&
-      await verifySignature(await getPublicKeyFromAddress(this._address), signature, messageBytes)
+      await verifySignature(await getPublicKeyFromAddress(await this.getAddress()), signature, messageBytes)
 
     if (!isValid) {
       throw new InvalidSignerError("The signer's transaction signature does not verify against the account's address.")

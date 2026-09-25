@@ -28,12 +28,11 @@ describe('SeedSignerSolana', () => {
   it('derives the SLIP-0010 vector at m/44\'/501\'/0\'/0\'', async () => {
     const root = new SeedSignerSolana(VECTOR_SEED_PHRASE)
     expect(root.path).toBe("m/44'/501'/0'/0'")
-    expect(root.address).toBe(VECTOR_ADDRESS)
     expect(await root.getAddress()).toBe(VECTOR_ADDRESS)
   })
 
-  it('accepts the raw BIP-32 seed bytes a phrase stands for', () => {
-    expect(new SeedSignerSolana(bip39.mnemonicToSeedSync(VECTOR_SEED_PHRASE)).address).toBe(VECTOR_ADDRESS)
+  it('accepts the raw BIP-32 seed bytes a phrase stands for', async () => {
+    expect(await new SeedSignerSolana(bip39.mnemonicToSeedSync(VECTOR_SEED_PHRASE)).getAddress()).toBe(VECTOR_ADDRESS)
   })
 
   it('refuses an invalid seed phrase, a missing seed, and a seed with a root', () => {
@@ -55,8 +54,8 @@ describe('SeedSignerSolana', () => {
     const child = await root.derive("1'/0'")
     expect(child.isDerivable).toBe(false)
     expect(child.path).toBe("m/44'/501'/1'/0'")
-    expect(child.address).toBe(new SeedSignerSolana(TEST_SEED_PHRASE, { path: "1'/0'", isChild: true }).address)
-    expect(child.address).not.toBe(root.address)
+    expect(await child.getAddress()).toBe(await new SeedSignerSolana(TEST_SEED_PHRASE, { path: "1'/0'", isChild: true }).getAddress())
+    expect(await child.getAddress()).not.toBe(await root.getAddress())
 
     await expect(child.derive("2'/0'")).rejects.toThrow('Cannot derive')
   })
